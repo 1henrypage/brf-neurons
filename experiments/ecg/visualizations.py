@@ -10,8 +10,9 @@ from pathlib import Path
 # Plot accuracy curves for ECG dataset
 # ----------------------------------------------------------------------------
 files = {
-    'BRF': 'experiments/ecg/reproduction_results/brf/run-brf-accuracy_test.csv',
-    'RF': 'experiments/ecg/reproduction_results/rf/run-rf-tag-accuracy_test.csv'
+    'BRF': 'experiments/ecg/reproduction_results/brf/run-brf-tag-accuracy_test.csv',
+    'RF': 'experiments/ecg/reproduction_results/rf/run-rf-tag-accuracy_test.csv',
+    'ALIF': 'experiments/ecg/reproduction_results/alif/run-alif-tag-accuracy_test.csv'
 }
 
 def plot_acc_curve():
@@ -102,4 +103,4 @@ def plot_brf_parameters(init_file, trained_file):
     plt.show()
 
 
-plot_brf_parameters(init_file, trained_file)
+# plot_brf_parameters(init_file, trained_file)
