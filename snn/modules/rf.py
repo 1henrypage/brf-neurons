@@ -65,6 +65,7 @@ def brf_update(
         omega: torch.Tensor,  # eigen ang. frequency of the neuron
         dt: float = DEFAULT_DT,  # 0.01
         theta: float = DEFAULT_RF_THETA,
+        use_rp: bool = True,  # use refractory period
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
     # membrane update u dim = (batch_size, hidden_size)
@@ -74,9 +75,13 @@ def brf_update(
 
     # # generate spike
     # z = functional.FGI_DGaussian(u_ - theta - q)
-    z = functional.StepDoubleGaussianGrad.apply(u_ - theta - q)
 
-    q = q.mul(0.9) + z
+    if use_rp:
+        z = functional.StepDoubleGaussianGrad.apply(u_ - theta - q)
+        q = q.mul(0.9) + z
+    else:
+        z = functional.StepDoubleGaussianGrad.apply(u_ - theta)
+        q = torch.zeros_like(q)
 
     return z, u_, v, q
 
@@ -213,6 +218,7 @@ class BRFCell(RFCell):
     def forward(
             self, x: torch.Tensor,
             state: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+            use_rp=True, use_smr=True, use_db=True
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         in_sum = self.linear(x)
@@ -221,12 +227,19 @@ class BRFCell(RFCell):
 
         omega = torch.abs(self.omega)
 
-        p_omega = sustain_osc(omega)
-
         b_offset = torch.abs(self.b_offset)
 
+        if use_db:
+            p_omega = sustain_osc(omega)
+        else:
+            p_omega = -1.0 * torch.ones_like(omega)
+
         # divergence boundary
-        b = p_omega - b_offset - q
+        if use_smr:
+            b = p_omega - b_offset - q
+        else:
+            b = p_omega - b_offset
+
 
         z, u, v, q = brf_update(
             x=in_sum,
@@ -236,6 +249,7 @@ class BRFCell(RFCell):
             b=b,
             omega=omega,
             dt=self.dt,
+            use_rp=use_rp,
         )
 
         return z, u, v, q
