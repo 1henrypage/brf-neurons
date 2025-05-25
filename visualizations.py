@@ -4,16 +4,23 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import glob
 
 
 # ----------------------------------------------------------------------------
-# Plot accuracy curves for ECG dataset
+# Plot accuracy curves for a dataset
 # ----------------------------------------------------------------------------
+dataset = 'shd' # or 'ecg'
+ablation = False  # Set to True if you want to include ablation results
 files = {
-    'BRF': 'experiments/ecg/reproduction_results/brf/run-brf-tag-accuracy_test.csv',
-    'RF': 'experiments/ecg/reproduction_results/rf/run-rf-tag-accuracy_test.csv',
-    'ALIF': 'experiments/ecg/reproduction_results/alif/run-alif-tag-accuracy_test.csv'
+    'BRF': f'experiments/{dataset}/reproduction_results/brf/run-brf-tag-accuracy_test.csv',
+    'RF': f'experiments/{dataset}/reproduction_results/rf/run-rf-tag-accuracy_test.csv',
+    'ALIF': f'experiments/{dataset}/reproduction_results/alif/run-alif-tag-accuracy_test.csv'
 }
+if ablation:
+    files['BRF-No RP'] = f'experiments/{dataset}/ablation/no_rp/run-rp-tag-accuracy_test.csv'
+    files['BRF-No SmR'] = f'experiments/{dataset}/ablation/no_smr/run-smr-tag-accuracy_test.csv'
+    files['BRF-No DB'] = f'experiments/{dataset}/ablation/no_db/run-db-tag-accuracy_test.csv'
 
 def plot_acc_curve():
     plt.figure(figsize=(10, 6))
@@ -22,25 +29,33 @@ def plot_acc_curve():
         df = pd.read_csv(file)
         plt.plot(df['Step'], df['Value'], label=f'{label}')
 
-
-    plt.title('ECG Test Accuracy vs. Epoch (Step)', fontsize=24)
+    
+    plt.title(f'{dataset.upper()}: Test Accuracy vs. Epoch (Step)', fontsize=24)
     plt.xlabel('Epoch (Step)', fontsize=20)
     plt.ylabel('Test Accuracy', fontsize=20)
     plt.legend(fontsize=20)
     plt.grid(True)
 
     plt.tight_layout()
-    plt.savefig('experiments/ecg/ecg_accuracy_plot.png', dpi=300, bbox_inches='tight')
+    ab = '_ablation' if ablation else ""
+    plt.savefig(f'experiments/{dataset}/{dataset}_accuracy_plot{ab}.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-plot_acc_curve()
+# plot_acc_curve()
 
 
 # ----------------------------------------------------------------------------
 # Plot Dampening Factor (b_c) vs. Angular Frequency (ω)
 # ----------------------------------------------------------------------------
-init_file = "experiments/ecg/models/05-21_20-48-01_init_7675_Adam(0.1),script-bw,NLL,LinearLR,no_gc,4,36,6,bs=16,ep=400,BRF(omega3.0,5.0,b0.1,1.0)LI(20.0,1.0).pt"
-trained_file = "experiments/ecg/models/05-21_20-48-01_7675_Adam(0.1),script-bw,NLL,LinearLR,no_gc,4,36,6,bs=16,ep=400,BRF(omega3.0,5.0,b0.1,1.0)LI(20.0,1.0).pt"
+model_files = glob.glob(f"experiments/{dataset}/models/reproduction/*BRF*.pt")
+
+init_file = [f for f in model_files if "init" in f][0] 
+trained_file = [f for f in model_files if "init" not in f][0]
+
+print(f"Init file: {init_file}")
+print(f"Trained file: {trained_file}")
+# init_file = f"experiments/{dataset}/models/05-21_20-48-01_init_7675_Adam(0.1),script-bw,NLL,LinearLR,no_gc,4,36,6,bs=16,ep=400,BRF(omega3.0,5.0,b0.1,1.0)LI(20.0,1.0).pt"
+# trained_file = f"experiments/{dataset}/models/05-21_20-48-01_7675_Adam(0.1),script-bw,NLL,LinearLR,no_gc,4,36,6,bs=16,ep=400,BRF(omega3.0,5.0,b0.1,1.0)LI(20.0,1.0).pt"
 
 # Constants
 DELTA = 0.01  # Time step from the paper
@@ -88,7 +103,7 @@ def plot_brf_parameters(init_file, trained_file):
                 c='red', alpha=0.4, label='Optimized', edgecolors='black', linewidths=0.5)
     
 
-    plt.title('BRF Parameter Combinations', pad=20)
+    plt.title(f'{dataset.upper()}: BRF Parameter Combinations', pad=20)
     plt.xlabel('Angular Frequency (ω) [rad/s]', labelpad=10)
     plt.ylabel("Dampening Factor (b_c = p(ω) - b')", labelpad=10)
     plt.grid(True, alpha=0.3)
@@ -99,8 +114,8 @@ def plot_brf_parameters(init_file, trained_file):
     plt.ylim(-5, 0)  # b_c should be negative
     
     plt.tight_layout()
-    plt.savefig('experiments/ecg/ecg_brf_parameters_plot.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'experiments/{dataset}/{dataset}_brf_parameters_plot.png', dpi=300, bbox_inches='tight')
     plt.show()
 
 
-# plot_brf_parameters(init_file, trained_file)
+plot_brf_parameters(init_file, trained_file)
