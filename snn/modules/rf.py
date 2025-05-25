@@ -218,7 +218,7 @@ class BRFCell(RFCell):
     def forward(
             self, x: torch.Tensor,
             state: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-            use_rp=True, use_smr=True, use_db=True
+            use_rp: bool = True, use_smr: bool = True, use_db: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         in_sum = self.linear(x)
