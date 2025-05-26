@@ -5,7 +5,7 @@ In this repository we reproduce part of the paper [Balanced Resonate-and-Fire Ne
 
 ## Authors
 
-**Danae Savvidi (5457769)**
+**Danae Savvidi**
 - Reproduce ECG parts of Figure 5.
 - Run models to reproduce SHD parts of Figure 5.
 - Ablation study to test effect of the 3  BRF mechanisms.
