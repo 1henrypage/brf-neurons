@@ -41,7 +41,7 @@ def plot_acc_curve():
     plt.savefig(f'experiments/{dataset}/{dataset}_accuracy_plot{ab}.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-# plot_acc_curve()
+plot_acc_curve()
 
 
 # ----------------------------------------------------------------------------
@@ -49,13 +49,11 @@ def plot_acc_curve():
 # ----------------------------------------------------------------------------
 model_files = glob.glob(f"experiments/{dataset}/models/reproduction/*BRF*.pt")
 
-init_file = [f for f in model_files if "init" in f][0] 
+init_file = [f for f in model_files if "init" in f][0]
 trained_file = [f for f in model_files if "init" not in f][0]
 
 print(f"Init file: {init_file}")
 print(f"Trained file: {trained_file}")
-# init_file = f"experiments/{dataset}/models/05-21_20-48-01_init_7675_Adam(0.1),script-bw,NLL,LinearLR,no_gc,4,36,6,bs=16,ep=400,BRF(omega3.0,5.0,b0.1,1.0)LI(20.0,1.0).pt"
-# trained_file = f"experiments/{dataset}/models/05-21_20-48-01_7675_Adam(0.1),script-bw,NLL,LinearLR,no_gc,4,36,6,bs=16,ep=400,BRF(omega3.0,5.0,b0.1,1.0)LI(20.0,1.0).pt"
 
 # Constants
 DELTA = 0.01  # Time step from the paper

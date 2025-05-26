@@ -1,3 +1,34 @@
+# Reproduction: Balanced Resonate-and-Fire Neurons
+
+In this repository we reproduce part of the paper [Balanced Resonate-and-Fire Neurons](https://openreview.net/forum?id=dkdilv4XD4) [[Higuchi et al., 2024a]](/).
+
+
+## Authors
+
+**Danae Savvidi (5457769)**
+- Reproduce ECG parts of Figure 5.
+- Run models to reproduce SHD parts of Figure 5.
+- Ablation study to test effect of the 3  BRF mechanisms.
+
+**Henry Page ()**
+
+**Bernadett Bakos ()**
+
+## Links
+
+- GitHub link: https://github.com/1henrypage/brf-neurons
+- Blog post: https://hackmd.io/@danaesav/brf-neurons
+- Paper link: https://arxiv.org/abs/2402.14603
+
+## Code structure
+
+#### Reproduction of Figure 5
+The models created can be found under `experiments/{dataset}/models/reproduction`. We use these models to create part of the visualizations in `visualizations.py`. We also provide the csv files containing different metrics (e.g. accuracy) per epoch for each of the models under `experiments/{dataset}/reproduction_results/{model}`.
+
+#### Ablation Study
+Results for the ablation study for a specific dataset and model (e.g. no divergence boundary) can be found under `experiments/{dataset}/ablation/{model}`.
+
+---
 # Balanced Resonate-and-Fire neurons
 This is the source repository for the paper [Balanced Resonate-and-Fire Neurons](https://openreview.net/forum?id=dkdilv4XD4) [[Higuchi et al., 2024a]](/)
 
