@@ -1,3 +1,5 @@
+import subprocess
+
 import torch.nn
 import tools
 from torch.utils.data import DataLoader, random_split
@@ -33,7 +35,7 @@ print(device)
 ################################################################
 
 # TRAIN DATASET #
-whole_train_dataset = tools.shd_to_dataset('./data/trainX_4ms.npy', './data/trainY_4ms.npy')
+whole_train_dataset = tools.shd_to_dataset('data/trainX_4ms.npy', 'data/trainY_4ms.npy')
 
 # 8156 sequences in whole training dataset
 total_train_dataset_size = len(whole_train_dataset)
@@ -51,7 +53,7 @@ train_dataset, val_dataset = random_split(
 )
 
 # TEST DATASET #
-test_dataset = tools.shd_to_dataset('./data/testX_4ms.npy', './data/testY_4ms.npy')
+test_dataset = tools.shd_to_dataset('data/testX_4ms.npy', 'data/testY_4ms.npy')
 
 # 2264 sequences in test dataset
 test_dataset_size = len(test_dataset)
@@ -183,6 +185,8 @@ unit_str = "BRF(omega{},{}b{},{})LI({},{})"\
 comment = opt_str + "," + net_str + "," + unit_str
 
 writer = SummaryWriter(comment=comment)
+log_dir = writer.log_dir  # This gets the actual directory where logs are being saved
+subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", "6009"])
 start_time = datetime.now().strftime("%m-%d_%H-%M-%S")
 
 

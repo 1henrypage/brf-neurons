@@ -1,3 +1,5 @@
+import subprocess
+
 import torch
 import torch.nn
 from torch.utils.data import DataLoader, random_split
@@ -34,7 +36,8 @@ print(device)
 ####################################################################
 
 # TRAIN DATASET #
-preprocessed_train_dataset = scipy.io.loadmat('./data/QTDB_train.mat')
+# check file exists
+preprocessed_train_dataset = scipy.io.loadmat('data/QTDB_train.mat')
 whole_train_dataset = tools.convert_data_format(preprocessed_train_dataset)
 
 # 618 sequences in whole training dataset
@@ -53,7 +56,7 @@ train_dataset, val_dataset = random_split(
 )
 
 # TEST DATASET #
-preprocessed_test_dataset = scipy.io.loadmat('./data/QTDB_test.mat')
+preprocessed_test_dataset = scipy.io.loadmat('data/QTDB_test.mat')
 test_dataset = tools.convert_data_format(preprocessed_test_dataset)
 
 # 141 sequences in test dataset
@@ -174,6 +177,8 @@ unit_str = "ALIF(tau_m({},{}),tau_a({},{}),linMask_{})LI(tau_m({},{}))"\
 comment = opt_str + "," + net_str + "," + unit_str
 
 writer = SummaryWriter(comment=comment)
+log_dir = writer.log_dir  # This gets the actual directory where logs are being saved
+subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", "6008"])
 
 start_time = datetime.now().strftime("%m-%d_%H-%M-%S")
 print(start_time, comment)
@@ -212,7 +217,7 @@ for epoch in range(epochs_num + 1):
             inputs = inputs.permute(1, 0, 2).to(device)
             targets = targets.permute(1, 0, 2).to(device)
 
-            outputs, _ = model(inputs)
+            outputs, _, _ = model(inputs)
 
             loss = tools.apply_seq_loss(criterion=criterion, outputs=outputs, targets=targets[sub_seq_length:, :, :])
             val_loss_value = loss.item() / (sequence_length - sub_seq_length)
@@ -258,7 +263,7 @@ for epoch in range(epochs_num + 1):
             inputs = inputs.permute(1, 0, 2).to(device)
             targets = targets.permute(1, 0, 2).to(device)
 
-            outputs, _ = model(inputs)
+            outputs, _, _ = model(inputs)
 
             loss = tools.apply_seq_loss(criterion=criterion, outputs=outputs, targets=targets[sub_seq_length:, :, :])
             test_loss_value = loss.item() / (sequence_length - sub_seq_length)
@@ -316,7 +321,7 @@ for epoch in range(epochs_num + 1):
             # clear gradients
             optimizer.zero_grad()
 
-            outputs, _ = model(inputs)
+            outputs, _ , _= model(inputs)
 
             # accumulate loss for each time step and batch
             loss = tools.apply_seq_loss(criterion=criterion, outputs=outputs, targets=targets[sub_seq_length:, :, :])

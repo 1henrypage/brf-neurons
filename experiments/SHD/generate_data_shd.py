@@ -11,7 +11,7 @@ from tensorflow.keras.utils import get_file
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-cache_dir=os.path.expanduser("./data")
+cache_dir= "data"
 cache_subdir="hdspikes"
 print("Using cache dir: %s"%cache_dir)
 
@@ -128,9 +128,9 @@ def generate_dataset(file_name, dt=1e-3):
 
 
 test_X, testy = generate_dataset(files[0], dt=4e-3)
-np.save('./data/testX_4ms.npy', test_X)
-np.save('./data/testY_4ms.npy', testy)
+np.save('data/testX_4ms.npy', test_X)
+np.save('data/testY_4ms.npy', testy)
 
 train_X, trainy = generate_dataset(files[1], dt=4e-3)
-np.save('./data/trainX_4ms.npy', train_X)
-np.save('./data/trainY_4ms.npy', trainy)
+np.save('data/trainX_4ms.npy', train_X)
+np.save('data/trainY_4ms.npy', trainy)

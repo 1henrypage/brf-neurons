@@ -4,3 +4,15 @@
 
 __pycache__
 
+
+experiments/ecg/runs/
+experiments/shd/runs/
+*.DS_Store
+
+*.npy
+
+*.h5
+
+experiments/SHD/data/hdspikes/shd_train.h5.gz
+
+*.gz

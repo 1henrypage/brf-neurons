@@ -22,8 +22,14 @@ class SimpleResRNN(torch.nn.Module):
             output_bias: bool = False,
             label_last: bool = False,
             dt: float = 0.01,
+            use_rp=True, use_smr=True, use_db=True # Ablation study
     ) -> None:
         super(SimpleResRNN, self).__init__()
+
+        # Ablation study
+        self.use_rp = use_rp
+        self.use_smr = use_smr
+        self.use_db = use_db
 
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -96,7 +102,11 @@ class SimpleResRNN(torch.nn.Module):
 
             hidden_z, hidden_u, hidden_v, hidden_q = self.hidden(
                 torch.cat((input_t, hidden_z), dim=1),  # input_t for non-recurrency
-                hidden
+                hidden,
+                # Ablation study
+                use_rp=self.use_rp,
+                use_smr=self.use_smr,
+                use_db=self.use_db
             )
 
             # SOP

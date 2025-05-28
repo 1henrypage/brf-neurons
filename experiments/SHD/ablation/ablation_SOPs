@@ -1,0 +1,31 @@
+SHD
+
+- No DB
+Epoch [  13/  20]  |  Step [ 230/ 230]  |  Loss/train: 0.367869, Accuracy/train:  99.9864
+Epoch [  13/  20]  |  Summary  |  Loss/val: 0.502858, Accuracy/val: 96.9325%  |  Loss/test: 1.048707, Accuracy/test: 88.2509 | SOP: 3135.173586572438
+1740.4745948000345 seconds
+Minimum val loss: 0.502858 at epoch: 13
+
+
+- No SMR
+Epoch [   9/  20]  |  Step [ 230/ 230]  |  Loss/train: 0.381202, Accuracy/train:  99.9728
+Epoch [   9/  20]  |  Summary  |  Loss/val: 0.516483, Accuracy/val: 97.3006%  |  Loss/test: 0.811497, Accuracy/test: 92.5353 | SOP: 4241.026943462897
+1091.7865014999406 seconds
+Minimum val loss: 0.516483 at epoch: 9
+
+- No RP
+Epoch [   8/  20]  |  Step [ 230/ 230]  |  Loss/train: 0.403812, Accuracy/train:  99.8093
+Epoch [   8/  20]  |  Summary  |  Loss/val: 0.593903, Accuracy/val: 96.3190%  |  Loss/test: 1.003763, Accuracy/test: 89.3110 | SOP: 4790.084805653711
+1754.541555600008 seconds
+Minimum val loss: 0.593903 at epoch: 8
+
+
+
+------- OTHER
+reporting just for fun, u can ignore
+ALIF
+Epoch [  13/  20]  |  Step [ 115/ 230]  |  Loss/train: 0.375992, Accuracy/train:  98.5326
+Epoch [  13/  20]  |  Step [ 230/ 230]  |  Loss/train: 0.372021, Accuracy/train:  98.7162
+Epoch [  13/  20]  |  Summary  |  Loss/val: 0.808609, Accuracy/val: 90.9202%  |  Loss/test: 1.474669, Accuracy/test: 76.0601
+2583.7113999000285 seconds
+Minimum val loss: 0.808609 at epoch: 13

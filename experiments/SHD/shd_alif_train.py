@@ -1,3 +1,5 @@
+import subprocess
+
 import torch.nn
 import tools
 from torch.utils.data import DataLoader, random_split
@@ -171,6 +173,8 @@ unit_str = "ALIF(tau_m({},{}),tau_a({},{}),linMask_{})LI(tau_m({},{}))"\
 comment = opt_str + "," + net_str + "," + unit_str
 
 writer = SummaryWriter(comment=comment)
+log_dir = writer.log_dir
+subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", "6010"])
 start_time = datetime.now().strftime("%m-%d_%H-%M-%S")
 print(start_time, comment)
 
@@ -219,7 +223,7 @@ for epoch in range(epochs_num + 1):
             # Reshape targets (for MNIST it's a single pattern).
             target = targets.to(device=device)
 
-            outputs, _ = model(input)
+            outputs, _, _ = model(input)
 
             # Apply loss sequentially against single pattern.
             loss = tools.apply_seq_loss(criterion=criterion, outputs=outputs, target=target)
@@ -278,7 +282,7 @@ for epoch in range(epochs_num + 1):
             # Reshape targets (for MNIST it's a single pattern).
             target = targets.to(device=device)
 
-            outputs, _ = model(input)
+            outputs, _, _ = model(input)
 
             # Apply loss sequentially against single pattern.
             loss = tools.apply_seq_loss(criterion=criterion, outputs=outputs, target=target)
@@ -349,7 +353,7 @@ for epoch in range(epochs_num + 1):
             # Clear previous gradients
             optimizer.zero_grad()
 
-            outputs, _ = model(input)
+            outputs, _, _ = model(input)
 
             # Apply loss sequentially against single pattern.
             loss = tools.apply_seq_loss(criterion=criterion, outputs=outputs, target=target)

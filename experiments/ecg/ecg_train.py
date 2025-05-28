@@ -1,3 +1,5 @@
+import subprocess
+
 import torch.nn
 from torch.utils.data import DataLoader, random_split
 import scipy
@@ -174,6 +176,8 @@ unit_str = "BRF(omega{},{},b{},{})LI({},{})"\
 comment = opt_str + "," + net_str + "," + unit_str
 
 writer = SummaryWriter(comment=comment)
+log_dir = writer.log_dir  # This gets the actual directory where logs are being saved
+subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", "6006"])
 # print(model.state_dict())
 
 start_time = datetime.now().strftime("%m-%d_%H-%M-%S")

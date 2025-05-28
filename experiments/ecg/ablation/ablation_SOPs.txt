@@ -1,0 +1,21 @@
+ECG
+
+- No DB
+Epoch [ 156/ 400]  | Loss/train: 0.557363, Accuracy/train:  80.8471
+Epoch [ 156/ 400]  |  Summary  |  Loss/val: 0.553937, Accuracy/val: 81.3153%  |  Loss/test: 0.463513, Accuracy/test: 83.0955 | SOP: 5115.787109375
+7.15 hr
+Params: 1734
+
+- No SMR
+
+Epoch [ 328/ 400]  | Loss/train: 0.313448, Accuracy/train:  88.8666
+Epoch [ 328/ 400]  |  Summary  |  Loss/val: 0.412856, Accuracy/val: 85.8953%  |  Loss/test: 0.379622, Accuracy/test: 86.3131 | SOP: 8289.3115234375
+7.52 hr
+Params: 1734
+
+
+- No RP
+Epoch [ 226/ 400]  | Loss/train: 0.333099, Accuracy/train:  87.9968
+Epoch [ 226/ 400]  |  Summary  |  Loss/val: 0.409745, Accuracy/val: 85.5990%  |  Loss/test: 0.408945, Accuracy/test: 85.3426 | SOP: 11170.53125
+7.26 hr
+Params: 1734
