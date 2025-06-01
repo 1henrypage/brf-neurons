@@ -4,7 +4,7 @@ from flax import linen as nn
 from flax.linen.initializers import normal, zeros, lecun_normal, variance_scaling
 from typing import Tuple
 
-from torch.nn.init import xavier_uniform
+from jax._src.nn.initializers import xavier_uniform
 
 from jax_snn.functional import StepLinearGrad, quantize_tensor
 from jax_snn.modules import LinearMask

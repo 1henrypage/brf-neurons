@@ -203,7 +203,7 @@ class DoubleALIFRNN(nn.Module):
         hidden1_z, hidden1_u, hidden1_a, hidden2_z, hidden2_u, hidden2_a, out_u = carry
 
         if self.sub_seq_length > 0:
-            outputs = outputs[self.sub_seq_length:]
+            outputs = outputs[self.sub_seq_length + 1:]
 
         if self.label_last:
             outputs = outputs[-1:, :, :]
@@ -212,11 +212,9 @@ class DoubleALIFRNN(nn.Module):
 
 class ALIFRSNN_SD(SimpleALIFRNN):
     spike_del_p: float = 0.
-    key: jax.random.PRNGKey = None
     def __call__(self, x):
         sequence_length = x.shape[0]
         batch_size = x.shape[1]
-        key1, key2 = random.split(self.key)
 
         hidden_z = jnp.zeros((batch_size, self.hidden_size))
         hidden_u = jnp.zeros_like(hidden_z)
@@ -236,7 +234,7 @@ class ALIFRSNN_SD(SimpleALIFRNN):
             hidden_z = spike_deletion(
                 hidden_z=hidden_z,
                 spike_del_p=self.spike_del_p,
-                key=key2
+                key=self.make_rng('spike_deletion'),
             )
 
             num_spikes = num_spikes + jnp.sum(hidden_z)
@@ -422,9 +420,19 @@ class SimpleALIFRNNTbptt(nn.Module):
                         new_opt_state,
                     )
 
+                should_update = jnp.logical_or(
+                    jnp.logical_and(
+                        jnp.logical_and(t % self.tbptt_steps == 0, loss_val > 1e-7),
+                        train,
+                    ),
+                    jnp.logical_and(
+                        jnp.logical_and(t == sequence_length - 1, loss_val > 1e-7),
+                        train,
+                    )
+                )
+
                 return jax.lax.cond(
-                    ((t % self.tbptt_steps == 0) & train & (loss_val != 0.0)) |
-                    ((t == sequence_length - 1) & train & (loss_val != 0.0)),
+                    should_update,
                     apply_grads,
                     lambda: (
                         hidden_z_new,

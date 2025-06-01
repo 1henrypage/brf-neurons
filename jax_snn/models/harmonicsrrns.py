@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
-from .. import modules  # Assuming you have JAX versions of these modules
+from .. import modules
 
 
 class SimpleHarmonicRNN(nn.Module):

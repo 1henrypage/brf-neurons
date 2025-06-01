@@ -47,16 +47,11 @@ def brf_update(
         omega: jnp.ndarray,
         dt: float = DEFAULT_DT,
         theta: float = DEFAULT_RF_THETA,
-        use_rp: bool = True,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     u_ = u + b * u * dt - omega * v * dt + x * dt
     v = v + omega * u * dt + b * v * dt
-    if use_rp:
-        z = StepDoubleGaussianGrad(u_ - theta - q)
-        q = q * 0.9 + z
-    else:
-        z = StepDoubleGaussianGrad(u_ - theta)
-        q = jnp.zeros_like(q)
+    z = StepDoubleGaussianGrad(u_ - theta - q)
+    q = q * 0.9 + z
     return z, u_, v, q
 
 
@@ -155,9 +150,6 @@ class BRFCell(RFCell):
             self,
             x: jnp.ndarray,
             state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray],
-            use_rp: bool = True,
-            use_smr: bool = True,
-            use_db: bool = True,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
 
         if self.pruning:
@@ -194,9 +186,8 @@ class BRFCell(RFCell):
         ) if self.adaptive_b_offset else jnp.full((self.layer_size,), self.b_offset)
         b_offset = jnp.abs(b_param)
 
-        p_omega = sustain_osc(omega) if use_db else -jnp.ones_like(omega)
-
-        b = p_omega - b_offset - q if use_smr else p_omega - b_offset
+        p_omega = sustain_osc(omega)
+        b = p_omega - b_offset - q
 
         z, u, v, q = brf_update(
             x=in_sum,
@@ -206,6 +197,5 @@ class BRFCell(RFCell):
             b=b,
             omega=omega,
             dt=self.dt,
-            use_rp=use_rp,
         )
         return z, u, v, q

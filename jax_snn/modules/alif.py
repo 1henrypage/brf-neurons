@@ -76,7 +76,7 @@ class ALIFCell(nn.Module):
                 (self.layer_size,)
             )
         else:
-            self.tau_mem_param = self.variable("constants", "tau_mem", lambda: tau_mem_init)
+            self.tau_mem_param = tau_mem_init
 
         # Initialize tau_adp
         tau_adp_init = self.tau_adp * jnp.ones(self.layer_size)
@@ -87,17 +87,17 @@ class ALIFCell(nn.Module):
                 (self.layer_size,)
             )
         else:
-            self.tau_adp_param = self.variable("constants", "tau_adp", lambda: tau_adp_init)
+            self.tau_adp_param = tau_adp_init
 
     def __call__(self, x, state):
         z, u, a = state
 
         in_sum = self.linear(x)
 
-        tau_mem = jnp.abs(self.tau_mem_param.value if isinstance(self.tau_mem_param, nn.Variable) else self.tau_mem_param)
+        tau_mem = jnp.abs(self.tau_mem_param)
         alpha = jnp.exp(-1.0 / tau_mem)
 
-        tau_adp = jnp.abs(self.tau_adp_param.value if isinstance(self.tau_adp_param, nn.Variable) else self.tau_adp_param)
+        tau_adp = jnp.abs(self.tau_adp_param)
         rho = jnp.exp(-1.0 / tau_adp)
 
         z, u, a = alif_update(
@@ -121,11 +121,11 @@ class ALIFCellBP(ALIFCell):
 
         in_sum = self.linear(x)
 
-        tau_mem = jnp.abs(self.tau_mem_param.value if isinstance(self.tau_mem_param, nn.Variable) else self.tau_mem_param)
+        tau_mem = jnp.abs(self.tau_mem_param)
         alpha = jnp.exp(-1.0 / tau_mem)
         alpha = quantize_tensor(alpha, self.bit_precision)
 
-        tau_adp = jnp.abs(self.tau_adp_param.value if isinstance(self.tau_adp_param, nn.Variable) else self.tau_adp_param)
+        tau_adp = jnp.abs(self.tau_adp_param)
         rho = jnp.exp(-1.0 / tau_adp)
         rho = quantize_tensor(rho, self.bit_precision)
 
