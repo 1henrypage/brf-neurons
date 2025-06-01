@@ -1,13 +1,12 @@
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
-from flax.linen.initializers import normal, zeros, lecun_normal, variance_scaling
+from flax.linen.initializers import normal, zeros
 from typing import Tuple
 
 from jax._src.nn.initializers import xavier_uniform
 
 from jax_snn.functional import StepLinearGrad, quantize_tensor
-from jax_snn.modules import LinearMask
 
 DEFAULT_LI_TAU_M = 20.
 DEFAULT_LI_ADAPTIVE_TAU_M_MEAN = 20.
@@ -40,34 +39,33 @@ class LICell(nn.Module):
     adaptive_tau_mem_std: float = DEFAULT_LI_ADAPTIVE_TAU_M_STD
     bias: bool = False
 
-    @nn.compact
-    def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
-        linear = nn.Dense(
+    def setup(self):
+        self.linear = nn.Dense(
             features=self.layer_size,
             use_bias=self.bias,
             kernel_init=xavier_uniform(),
             bias_init=zeros,
         )
-        in_sum = linear(x)
 
         if self.adaptive_tau_mem:
-            tau_mem_param = self.param(
+            self.tau_mem_param = self.param(
                 "tau_mem",
                 lambda key, shape: normal(stddev=self.adaptive_tau_mem_std)(key, shape) + self.adaptive_tau_mem_mean,
                 (self.layer_size,),
             )
-            tau_mem = jnp.abs(tau_mem_param)
         else:
-            tau_mem = jnp.full((self.layer_size,), self.tau_mem)
+            self.tau_mem_param = jnp.full((self.layer_size,), self.tau_mem)
 
-        tau_mem = jnp.abs(tau_mem)
+    def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
+        in_sum = self.linear(x)
 
+        # Access the parameter created in setup
+        tau_mem = jnp.abs(self.tau_mem_param)
 
         alpha = jnp.exp(-1.0 / tau_mem)
 
         u = li_update(in_sum, u, alpha)
         return u
-
 
 
 class LIFCell(nn.Module):
@@ -79,27 +77,30 @@ class LIFCell(nn.Module):
     adaptive_tau_mem_std: float = DEFAULT_LIF_ADAPTIVE_TAU_M_STD
     bias: bool = False
 
-    @nn.compact
-    def __call__(self, x: jnp.ndarray, state: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        z, u = state
-
-        linear = nn.Dense(
+    def setup(self):
+        self.linear = nn.Dense(
             features=self.layer_size,
             use_bias=self.bias,
             kernel_init=xavier_uniform(),
             bias_init=zeros,
         )
-        in_sum = linear(x)
 
         if self.adaptive_tau_mem:
-            tau_mem_param = self.param(
+            self.tau_mem_param = self.param(
                 "tau_mem",
                 lambda key, shape: normal(stddev=self.adaptive_tau_mem_std)(key, shape) + self.adaptive_tau_mem_mean,
                 (self.layer_size,),
             )
-            tau_mem = jnp.abs(tau_mem_param)
         else:
-            tau_mem = jnp.full((self.layer_size,), self.tau_mem)
+            self.tau_mem_param = jnp.full((self.layer_size,), self.tau_mem)
+
+    def __call__(self, x: jnp.ndarray, state: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        z, u = state
+
+        in_sum = self.linear(x)
+
+        # Access the parameter created in setup
+        tau_mem = jnp.abs(self.tau_mem_param)
 
         alpha = jnp.sigmoid(-1.0 / jnp.abs(tau_mem))
 
@@ -108,47 +109,33 @@ class LIFCell(nn.Module):
 
 
 class LICellSigmoid(LICell):
-    @nn.compact
     def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
-        w_init = nn.initializers.xavier_uniform()
-        b_init = nn.initializers.zeros if self.use_bias else None
+        # Reusing `self.linear` from parent `LICell`'s setup
+        in_sum = self.linear(x)
 
-        dense = nn.Dense(self.layer_size, use_bias=self.use_bias, kernel_init=w_init, bias_init=b_init)
-        in_sum = dense(x)
+        # Reusing `self.tau_mem_param` from parent `LICell`'s setup
+        # The original code re-defined it. To properly convert, it needs to use the parent's.
+        # If this param is *different* from the parent's, LICellSigmoid needs its own setup.
+        # Assuming for now it uses the one defined by the parent, but its *calculation* of alpha differs.
+        tau_mem = self.tau_mem_param # Get the parameter from setup
 
-        tau_mem = self.param('tau_mem', lambda key, shape:
-        jax.random.normal(key, shape) * self.adaptive_tau_mem_std + self.adaptive_tau_mem_mean,
-                             (self.layer_size,)) if self.adaptive_tau_mem else self.tau_mem * jnp.ones(self.layer_size)
-
-        alpha = jax.nn.sigmoid(tau_mem)
+        alpha = jax.nn.sigmoid(tau_mem) # This is the unique part of LICellSigmoid
 
         return li_update(x=in_sum, u=u, alpha=alpha)
-
-
 
 
 class LICellBP(LICell):
     bit_precision: int = 32
 
-    @nn.compact
-    def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
-        linear = nn.Dense(
-            features=self.layer_size,
-            use_bias=self.bias,
-            kernel_init=xavier_uniform(),
-            bias_init=zeros,
-        )
-        in_sum = linear(x)
+    # This class also inherits its `setup` method from LICell.
+    # Thus, `self.linear` and `self.tau_mem_param` are already defined.
 
-        if self.adaptive_tau_mem:
-            tau_mem_param = self.param(
-                "tau_mem",
-                lambda key, shape: normal(stddev=self.adaptive_tau_mem_std)(key, shape) + self.adaptive_tau_mem_mean,
-                (self.layer_size,),
-            )
-            tau_mem = jnp.abs(tau_mem_param)
-        else:
-            tau_mem = jnp.full((self.layer_size,), self.tau_mem)
+    def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
+        # Reusing `self.linear` from parent `LICell`'s setup
+        in_sum = self.linear(x)
+
+        # Access the parameter created in parent `LICell`'s setup
+        tau_mem = jnp.abs(self.tau_mem_param)
 
         alpha = jnp.exp(-1.0 / jnp.abs(tau_mem))
         alpha = quantize_tensor(alpha, self.bit_precision)

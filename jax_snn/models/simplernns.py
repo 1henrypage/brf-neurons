@@ -22,15 +22,15 @@ class SimpleALIFRNN(nn.Module):
     hidden_size: int
     output_size: int
     pruning: bool = False
-    adaptive_tau_mem: bool = True  # adaptive time constant for alpha
-    adaptive_tau_mem_mean: float = DEFAULT_ALIF_ADAPTIVE_TAU_M_MEAN
-    adaptive_tau_mem_std: float = DEFAULT_ALIF_ADAPTIVE_TAU_M_STD
-    adaptive_tau_adp: bool = True  # adaptive time constant for rho
-    adaptive_tau_adp_mean: float = DEFAULT_ALIF_ADAPTIVE_TAU_ADP_MEAN
-    adaptive_tau_adp_std: float = DEFAULT_ALIF_ADAPTIVE_TAU_ADP_STD
-    out_adaptive_tau: bool = True  # adaptive time constant for LI output
-    out_adaptive_tau_mem_mean: float = DEFAULT_ALIF_ADAPTIVE_TAU_M_MEAN
-    out_adaptive_tau_mem_std: float = DEFAULT_ALIF_ADAPTIVE_TAU_M_STD
+    adaptive_tau_mem: bool = True
+    adaptive_tau_mem_mean: float = 20.0
+    adaptive_tau_mem_std: float = 5.0
+    adaptive_tau_adp: bool = True
+    adaptive_tau_adp_mean: float = 150.0
+    adaptive_tau_adp_std: float = 50.0
+    out_adaptive_tau: bool = True
+    out_adaptive_tau_mem_mean: float = 20.0
+    out_adaptive_tau_mem_std: float = 5.0
     hidden_bias: bool = False
     output_bias: bool = False
     sub_seq_length: int = 0
@@ -62,8 +62,17 @@ class SimpleALIFRNN(nn.Module):
             bias=self.output_bias
         )
 
+        # Scan-compatible wrapper
+        self.scanned_core = nn.scan(
+            self.ALIFScanCore,
+            variable_broadcast="params",
+            split_rngs={"params": False},
+            in_axes=0,
+            out_axes=0
+        )(self.hidden, self.out)
+
+    @nn.compact
     def __call__(self, x):
-        sequence_length = x.shape[0]
         batch_size = x.shape[1]
 
         hidden_z = jnp.zeros((batch_size, self.hidden_size))
@@ -72,28 +81,10 @@ class SimpleALIFRNN(nn.Module):
         out_u = jnp.zeros((batch_size, self.output_size))
         num_spikes = jnp.array(0.0, dtype=jnp.float32)
 
-        def scan_fn(carry, input_t):
-            hidden_z, hidden_u, hidden_a, out_u, num_spikes = carry
-            hidden = (hidden_z, hidden_u, hidden_a)
-
-            hidden_z, hidden_u, hidden_a = self.hidden(
-                # this can be problematic
-                jnp.concatenate((input_t, hidden_z), axis=1),
-                hidden
-            )
-
-            out_u = self.out(hidden_z, out_u)
-            num_spikes = num_spikes + jnp.sum(hidden_z)
-
-            return (hidden_z, hidden_u, hidden_a, out_u, num_spikes), out_u
-
         init_carry = (hidden_z, hidden_u, hidden_a, out_u, num_spikes)
 
-        (final_hidden_z, final_hidden_u, final_hidden_a, final_out_u, total_spikes), outputs = jax.lax.scan(
-            scan_fn,
-            init_carry,
-            x
-        )
+        # Apply scan core
+        (final_hidden_z, final_hidden_u, final_hidden_a, final_out_u, total_spikes), outputs = self.scanned_core(init_carry, x)
 
         if self.sub_seq_length > 0:
             outputs = outputs[self.sub_seq_length:]
@@ -102,6 +93,25 @@ class SimpleALIFRNN(nn.Module):
             outputs = outputs[-self.n_last:]
 
         return outputs, ((final_hidden_z, final_hidden_u, final_hidden_a), final_out_u), total_spikes
+
+    class ALIFScanCore(nn.Module):
+        hidden: nn.Module
+        out: nn.Module
+
+        @nn.compact
+        def __call__(self, carry, input_t):
+            hidden_z, hidden_u, hidden_a, out_u, num_spikes = carry
+
+            new_hidden_z, new_hidden_u, new_hidden_a = self.hidden(
+                jnp.concatenate((input_t, hidden_z), axis=-1),
+                (hidden_z, hidden_u, hidden_a)
+            )
+
+            new_out_u = self.out(new_hidden_z, out_u)
+            new_num_spikes = num_spikes + jnp.sum(new_hidden_z)
+
+            new_carry = (new_hidden_z, new_hidden_u, new_hidden_a, new_out_u, new_num_spikes)
+            return new_carry, new_out_u
 
 class DoubleALIFRNN(nn.Module):
     input_size: int
