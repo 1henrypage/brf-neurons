@@ -136,7 +136,7 @@ class DoubleALIFRNN(nn.Module):
     n_last: int = 1 # Added for consistency with SimpleALIFRNN, though not used in original logic
 
     def setup(self):
-        self.hidden1 = ALIFCell(
+        self.hidden1 = modules.ALIFCell(
             input_size=self.input_size + self.hidden1_size,
             layer_size=self.hidden1_size,
             adaptive_tau_mem=self.adaptive_tau_mem,
@@ -148,7 +148,7 @@ class DoubleALIFRNN(nn.Module):
             bias=self.hidden1_bias,
             mask_prob=self.mask_prob
         )
-        self.hidden2 = ALIFCell(
+        self.hidden2 = modules.ALIFCell(
             input_size=self.hidden1_size + self.hidden2_size,
             layer_size=self.hidden2_size,
             adaptive_tau_mem=self.adaptive_tau_mem,
@@ -160,7 +160,7 @@ class DoubleALIFRNN(nn.Module):
             bias=self.hidden2_bias,
             mask_prob=self.mask_prob
         )
-        self.out = LICell(
+        self.out = modules.LICell(
             input_size=self.hidden2_size,
             layer_size=self.output_size,
             adaptive_tau_mem=self.out_adaptive_tau,

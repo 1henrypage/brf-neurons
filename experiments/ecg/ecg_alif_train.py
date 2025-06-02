@@ -2,6 +2,7 @@ import subprocess
 
 import torch
 import torch.nn
+import time
 from torch.utils.data import DataLoader, random_split
 import scipy
 import math
@@ -258,6 +259,7 @@ for epoch in range(epochs_num + 1):
         test_loss = 0
         test_correct = 0
 
+        epoch_start_time = time.time()
         for i, (inputs, targets) in enumerate(test_loader):
 
             inputs = inputs.permute(1, 0, 2).to(device)
@@ -274,6 +276,10 @@ for epoch in range(epochs_num + 1):
 
         test_loss /= total_test_steps
         test_acc = (test_correct / (test_dataset_size * (sequence_length - sub_seq_length))) * 100.0
+
+        epoch_end_time = time.time()
+
+        writer.add_scalar("Time/train_epoch_step", (epoch_end_time - epoch_start_time), epoch)
 
         # Log current test loss and accuracy
         writer.add_scalar(
