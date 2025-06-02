@@ -3,7 +3,6 @@ import jax.numpy as jnp
 from flax import linen as nn
 from .. import modules
 
-
 class SimpleHarmonicRNN(nn.Module):
     input_size: int
     hidden_size: int
@@ -40,31 +39,25 @@ class SimpleHarmonicRNN(nn.Module):
             bias=self.output_bias
         )
 
+        # Scan-compatible wrapper
+        self.scanned_core = nn.scan(
+            self.HarmonicScanCore,
+            variable_broadcast="params",
+            split_rngs={"params": False},
+            in_axes=0,
+            out_axes=0
+        )(self.hidden, self.out)
+
+    @nn.compact
     def __call__(self, x):
-        def scan_fn(carry, input_t):
-            hidden_z, hidden_u, hidden_v, hidden_a, out_u, num_spikes = carry
-
-            hidden = (hidden_z, hidden_u, hidden_v, hidden_a)
-            hidden_z, hidden_u, hidden_v, hidden_a = self.hidden(
-                jnp.concatenate((input_t, hidden_z), axis=1),
-                hidden
-            )
-
-            new_spikes = jnp.sum(hidden_z)
-            out_u = self.out(hidden_z, out_u)
-
-            # Add new_spikes to accumulated num_spikes
-            num_spikes = num_spikes + new_spikes
-
-            return (hidden_z, hidden_u, hidden_v, hidden_a, out_u, num_spikes), out_u
-
         batch_size = x.shape[1]
+
         init_hidden_z = jnp.zeros((batch_size, self.hidden_size))
         init_hidden_u = jnp.zeros_like(init_hidden_z)
         init_hidden_v = jnp.zeros_like(init_hidden_z)
         init_hidden_a = jnp.zeros_like(init_hidden_z)
         init_out_u = jnp.zeros((batch_size, self.output_size))
-        init_num_spikes = jnp.array(0., dtype=jnp.float32)  # important for JAX
+        init_num_spikes = jnp.array(0., dtype=jnp.float32)
 
         init_carry = (
             init_hidden_z,
@@ -76,15 +69,37 @@ class SimpleHarmonicRNN(nn.Module):
         )
 
         (final_hidden_z, final_hidden_u, final_hidden_v, final_hidden_a, final_out_u,
-         total_spikes), outputs_u = jax.lax.scan(
-            scan_fn,
-            init_carry,
-            x
-        )
+         total_spikes), outputs_u = self.scanned_core(init_carry, x)
 
         if self.label_last:
-            outputs = outputs_u[-1:, :, :]
+            outputs = outputs_u[-1:, :, :]  # Retained original logic: -1:, :, :
         else:
             outputs = outputs_u
 
-        return outputs, ((final_hidden_z, final_hidden_u), final_out_u), total_spikes
+        # The original return structure for the hidden state was ((final_hidden_z, final_hidden_u), final_out_u)
+        # Based on scan_fn's carry and HRFCell's outputs, it seems (z, u, v, a) are all part of the hidden state.
+        # I'll stick to the original return format of the hidden state if possible, or infer from current structure.
+        # Given the previous context, I'll return (final_hidden_z, final_hidden_u, final_hidden_v, final_hidden_a)
+        # as the first part of the hidden state tuple for consistency with how it's handled in the carry.
+        return outputs, ((final_hidden_z, final_hidden_u, final_hidden_v, final_hidden_a), final_out_u), total_spikes
+
+    class HarmonicScanCore(nn.Module):
+        hidden: nn.Module
+        out: nn.Module
+
+        @nn.compact
+        def __call__(self, carry, input_t):
+            hidden_z, hidden_u, hidden_v, hidden_a, out_u, num_spikes = carry
+
+            new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_a = self.hidden(
+                jnp.concatenate((input_t, hidden_z), axis=-1),
+                (hidden_z, hidden_u, hidden_v, hidden_a)
+            )
+
+            new_spikes = jnp.sum(new_hidden_z)
+            new_out_u = self.out(new_hidden_z, out_u)
+
+            new_num_spikes = num_spikes + new_spikes
+
+            new_carry = (new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_a, new_out_u, new_num_spikes)
+            return new_carry, new_out_u
