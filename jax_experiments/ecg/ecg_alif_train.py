@@ -300,6 +300,8 @@ def train():
     start_time_str = datetime.now().strftime("%m-%d_%H-%M-%S")
     print(start_time_str, comment)
 
+    save_model_params(best_state_params, f"models/{start_time_str}_{comment}_init_loss.msgpack")
+
     training_start_time = datetime.now()
     print(f"Training started at: {training_start_time.strftime('%m-%d_%H-%M-%S')}")
     print(f"Initial model parameters:\n{jax.tree_map(lambda x: x.shape, state.params)}")

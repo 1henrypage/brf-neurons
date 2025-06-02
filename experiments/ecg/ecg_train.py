@@ -1,5 +1,6 @@
 import subprocess
 
+import time
 import torch.nn
 from torch.utils.data import DataLoader, random_split
 import scipy
@@ -315,6 +316,7 @@ for epoch in range(epochs_num + 1):
         # go to training mode
         model.train()
 
+        epoch_start_time = time.time()
         for i, (inputs, targets) in enumerate(train_loader):
 
             current_batch_size = len(inputs)
@@ -366,6 +368,9 @@ for epoch in range(epochs_num + 1):
                 break
 
             iteration += 1
+
+        epoch_end_time = time.time()
+        writer.add_scalar("Time/train_epoch_step", (epoch_end_time - epoch_start_time), epoch)
 
 
         print_train_loss /= total_train_steps
