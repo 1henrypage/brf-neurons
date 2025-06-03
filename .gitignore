@@ -16,6 +16,7 @@ experiments/shd/runs/
 experiments/SHD/data/hdspikes/shd_train.h5.gz
 
 jax_experiments/smnist/data/
+experiments/smnist/data/
 
 
 *.gz
