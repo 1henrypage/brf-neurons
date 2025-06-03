@@ -15,7 +15,7 @@ dependencies = [
     "matplotlib==3.10.3",
     "jax[cuda12]==0.5.3",
     "flax==0.10.6",
-    "optax==0.2.4"
+    "optax==0.2.4",
 ]
 
 [tool.poetry]
