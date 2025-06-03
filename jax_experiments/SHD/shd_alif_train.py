@@ -1,9 +1,38 @@
+import time
+import random
+from datetime import datetime
+
+
+import sys
+sys.path.append("../..")
+
+import jax
+import jax.numpy as jnp
+from flax.training import train_state
+import optax
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+import subprocess
+
+from jax_snn.models import SimpleALIFRNN
+import tools  # your utility functions, including shd_to_dataset, apply_seq_loss, count_correct_predictions
+
+# ----------------------------
+# General settings
+# ----------------------------
+
+device = jax.devices("gpu")[0] if jax.local_device_count() > 0 else jax.devices("cpu")[0]
+print(device)
+
+pin_memory = False  # no equivalent in JAX Dataloader
+num_workers = 0     # no equivalent in JAX Dataloader
+
+# ----------------------------
+# Dataset setup
 from functools import partial
-from typing import Any
+from typing import Any, Callable, Tuple
 import torch
 from torch.utils.data import DataLoader, random_split
-import scipy
-import math
 import numpy as np
 from datetime import datetime
 import random
@@ -15,51 +44,51 @@ import flax
 import sys
 import time
 import subprocess
+import os
 
 sys.path.append("../..")
-
 import tools
-from jax_snn.models import SimpleALIFRNN
+from jax_snn.models import SimpleResRNN
 from torch.utils.tensorboard import SummaryWriter
 
-
 # -------------------------------------------------------------------
-# Dataset Preparation
+# Dataset Preparation (SHD specific)
 # -------------------------------------------------------------------
 
-print("JAX devices available:", jax.devices())
+device = jax.devices("gpu")[0] if jax.devices("gpu") else jax.devices("cpu")[0]
+print("Using device:", device)
 
-pin_memory = torch.cuda.is_available()
-num_workers = 1 if torch.cuda.is_available() else 0
-
-whole_train_dataset = tools.shd_to_dataset('./data/trainX_4ms.npy', './data/trainY_4ms.npy')
-
+# Load SHD dataset
+whole_train_dataset = tools.shd_to_dataset('data/trainX_sample.npy', 'data/trainY_sample.npy')
 total_train_dataset_size = len(whole_train_dataset)
 val_dataset_size = int(total_train_dataset_size * 0.1)
 train_dataset_size = total_train_dataset_size - val_dataset_size
 
+# Split datasets
 train_dataset, val_dataset = random_split(
     dataset=whole_train_dataset,
     lengths=[train_dataset_size, val_dataset_size]
 )
 
-test_dataset = tools.shd_to_dataset('./data/testX_4ms.npy', './data/testY_4ms.npy')
+test_dataset = tools.shd_to_dataset('data/testX_sample.npy', 'data/testY_sample.npy')
 test_dataset_size = len(test_dataset)
+
+# -------------------------------------------------------------------
+# DataLoader Configuration
+# -------------------------------------------------------------------
 
 sequence_length = 250
 input_size = 700
 hidden_size = 128
 num_classes = 20
-batch_size = 32
 
+batch_size = 32
 val_batch_size = 256
 test_batch_size = 256
 
 train_loader = DataLoader(
     dataset=train_dataset,
     batch_size=batch_size,
-    num_workers=num_workers,
-    pin_memory=pin_memory,
     shuffle=True,
     drop_last=False
 )
@@ -67,8 +96,6 @@ train_loader = DataLoader(
 val_loader = DataLoader(
     dataset=val_dataset,
     batch_size=val_batch_size,
-    num_workers=num_workers,
-    pin_memory=pin_memory,
     shuffle=False,
     drop_last=False
 )
@@ -76,28 +103,36 @@ val_loader = DataLoader(
 test_loader = DataLoader(
     dataset=test_dataset,
     batch_size=test_batch_size,
-    num_workers=num_workers,
-    pin_memory=pin_memory,
     shuffle=False,
     drop_last=False
 )
 
 # -------------------------------------------------------------------
-# Model Setup (Flax)
+# Model Configuration
 # -------------------------------------------------------------------
 
+# recorded into comment
+# fraction of the elements in the hidden.linear.weight to be zero
 mask_prob = 0.0
+
+# ALIF alpha tau_mem init normal dist.
 adaptive_tau_mem_mean = 20.
 adaptive_tau_mem_std = 5.
+
+# ALIF rho tau_adp init normal dist.
 adaptive_tau_adp_mean = 150.
 adaptive_tau_adp_std = 10.
+
+# LI alpha tau_mem init normal distribution
 out_adaptive_tau_mem_mean = 20.
 out_adaptive_tau_mem_std = 5.
 
 label_last = False
 sub_seq_length = 10
+
 hidden_bias = True
 output_bias = True
+
 
 model = SimpleALIFRNN(
     input_size=input_size,
@@ -116,46 +151,45 @@ model = SimpleALIFRNN(
     output_bias=output_bias
 )
 
-def to_jax(batch):
+# -------------------------------------------------------------------
+# JAX Utilities
+# -------------------------------------------------------------------
+
+def to_jax(batch: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[jnp.ndarray, jnp.ndarray]:
     inputs, targets = batch
-    inputs = jax.device_put(jnp.array(inputs.numpy()))
-    targets = jax.device_put(jnp.array(targets.numpy()))
-    return jnp.transpose(inputs, (1, 0, 2)), targets # Transpose inputs, keep targets as is
+    inputs_jax = jax.device_put(jnp.array(inputs.numpy()), device=device)
+    targets_jax = jax.device_put(jnp.array(targets.numpy()), device=device)
+    # Permute to [sequence_length, batch_size, features]
+    return jnp.transpose(inputs_jax, (1, 0, 2)), targets_jax
 
 @jax.jit
-def nll_loss_fn(logits, labels):
+def nll_loss(logits: jnp.ndarray, labels: jnp.ndarray) -> jnp.ndarray:
     log_probs = jax.nn.log_softmax(logits)
-    # Using one_hot for labels and then summing element-wise for NLLLoss
-    one_hot_labels = jax.nn.one_hot(labels, num_classes)
+    one_hot_labels = jax.nn.one_hot(labels, num_classes=num_classes)
     return -jnp.sum(log_probs * one_hot_labels, axis=-1)
 
-@jax.jit
-def apply_seq_loss_jax(outputs, target, label_last, sub_seq_length, sequence_length):
+@partial(jax.jit, static_argnames=('label_last', 'sub_seq_length'))
+def apply_seq_loss(
+        outputs: jnp.ndarray,
+        targets: jnp.ndarray,
+        label_last: bool,
+        sub_seq_length: int
+) -> jnp.ndarray:
+    """Compute sequence loss similar to PyTorch version."""
     if label_last:
-        # For label_last, target is a single class label per sequence
-        # outputs are (sequence_length, batch_size, num_classes)
-        # We need the last output's loss
-        loss = jax.vmap(nll_loss_fn, in_axes=(0, None))(outputs[-1, :, :], target)
-        return jnp.mean(loss)
+        # Only use last output
+        loss = nll_loss(outputs[-1], targets)
     else:
-        # For sequence-wise loss, target is applied to outputs after sub_seq_length
-        # target is (batch_size, num_classes)
-        # outputs are (sequence_length, batch_size, num_classes)
-        outputs_sliced = outputs[sub_seq_length:, :, :]
-        # Repeat target along the sequence dimension for applying loss at each step
-        target_expanded = jnp.expand_dims(target, axis=0) # (1, batch_size, num_classes)
-        target_repeated = jnp.repeat(target_expanded, outputs_sliced.shape[0], axis=0) # (sliced_seq_len, batch_size, num_classes)
+        # Use all outputs except initial sub_seq_length
+        loss = jnp.mean(nll_loss(outputs[sub_seq_length:], targets), axis=0)
 
-        # Apply NLL loss for each element in the sequence
-        losses_per_element = jax.vmap(jax.vmap(nll_loss_fn, in_axes=(0, None)))(outputs_sliced, jnp.argmax(target_repeated, axis=-1))
-        # Sum over the sequence and batch, then normalize
-        return jnp.sum(losses_per_element) / (outputs_sliced.shape[0] * outputs_sliced.shape[1])
+    return jnp.mean(loss)
 
 @jax.jit
-def count_correct_predictions_jax(predictions, targets):
-    predicted_classes = jnp.argmax(predictions, axis=-1)
-    true_classes = jnp.argmax(targets, axis=-1) # Assuming targets are one-hot encoded for consistency
-    return jnp.sum(predicted_classes == true_classes)
+def count_correct(outputs: jnp.ndarray, targets: jnp.ndarray) -> jnp.ndarray:
+    """Count correct predictions by comparing mean outputs."""
+    preds = jnp.argmax(jnp.mean(outputs, axis=0), axis=-1)
+    return jnp.sum(preds == targets)
 
 # -------------------------------------------------------------------
 # Training State
@@ -169,33 +203,46 @@ class TrainState(train_state.TrainState):
 # Training & Evaluation Steps
 # -------------------------------------------------------------------
 
-@partial(jax.jit, static_argnames=('label_last', 'sub_seq_length', 'sequence_length'))
-def train_step(state, batch, label_last, sub_seq_length, sequence_length):
-    inputs, targets = batch
-
+@partial(jax.jit, static_argnames=('label_last', 'sub_seq_length'))
+def train_step(
+        state: TrainState,
+        inputs: jnp.ndarray,
+        targets: jnp.ndarray,
+        label_last: bool,
+        sub_seq_length: int
+) -> Tuple[TrainState, jnp.ndarray, jnp.ndarray]:
+    """Single training step."""
     def loss_fn(params):
-        outputs, _, _ = state.apply_fn({'params': params}, inputs)
-        loss = apply_seq_loss_jax(outputs, targets, label_last, sub_seq_length, sequence_length)
+        outputs, _, _ = state.apply_fn(
+            {'params': params},
+            inputs,
+            rngs={'dropout': jax.random.fold_in(state.key, state.step)}
+        )
+        loss = apply_seq_loss(outputs, targets, label_last, sub_seq_length)
         return loss, outputs
 
-    (loss, outputs), grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params)
+    grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+    (loss, outputs), grads = grad_fn(state.params)
     state = state.apply_gradients(grads=grads)
+    correct = count_correct(outputs, targets)
+    return state, loss, correct
 
-    # For accuracy calculation, always use the mean of outputs over time, and compare with the single target
-    correct = count_correct_predictions_jax(outputs.mean(axis=0), targets)
-    accuracy = (correct / targets.shape[0]) * 100.0 # targets.shape[0] is batch_size
-
-    return state, loss, accuracy, outputs.mean(axis=0)
-
-@partial(jax.jit, static_argnames=('label_last', 'sub_seq_length', 'sequence_length'))
-def eval_step(state, batch, label_last, sub_seq_length, sequence_length):
-    inputs, targets = batch
-    outputs, _, _ = state.apply_fn({'params': state.params}, inputs)
-    loss = apply_seq_loss_jax(outputs, targets, label_last, sub_seq_length, sequence_length)
-
-    correct = count_correct_predictions_jax(outputs.mean(axis=0), targets)
-    accuracy = (correct / targets.shape[0]) * 100.0
-    return loss, accuracy
+@partial(jax.jit, static_argnames=('label_last', 'sub_seq_length'))
+def eval_step(
+        state: TrainState,
+        inputs: jnp.ndarray,
+        targets: jnp.ndarray,
+        label_last: bool,
+        sub_seq_length: int
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Evaluation step."""
+    outputs, _, spikes = state.apply_fn(
+        {'params': state.params},
+        inputs
+    )
+    loss = apply_seq_loss(outputs, targets, label_last, sub_seq_length)
+    correct = count_correct(outputs, targets)
+    return loss, correct, jnp.sum(spikes)
 
 # -------------------------------------------------------------------
 # Learning Rate Scheduling
@@ -203,202 +250,165 @@ def eval_step(state, batch, label_last, sub_seq_length, sequence_length):
 
 optimizer_lr = 0.075
 epochs_num = 20
-total_steps = len(train_loader)
+total_train_steps = len(train_loader) * epochs_num
 
-def create_optimizer(epochs_num, total_steps, initial_lr):
+def create_optimizer():
+    """Create optimizer with linear decay schedule."""
     lr_schedule = optax.linear_schedule(
-        init_value=initial_lr,
+        init_value=optimizer_lr,
         end_value=0.0,
-        transition_steps=epochs_num * total_steps
+        transition_steps=total_train_steps
     )
-    return optax.chain(
-        optax.clip_by_global_norm(1.0), # Equivalent to gradient_clip_value
-        optax.adam(learning_rate=lr_schedule)
-    )
+    return optax.adam(learning_rate=lr_schedule)
 
 # -------------------------------------------------------------------
-# Initialize Model
+# Model Initialization
 # -------------------------------------------------------------------
 
-def init_model():
-    rng = jax.random.PRNGKey(42)
+def init_model(rng: jax.random.PRNGKey) -> TrainState:
+    """Initialize model and training state."""
     dummy_input = jnp.ones((sequence_length, batch_size, input_size))
     variables = model.init(rng, dummy_input)
+
     return TrainState.create(
         apply_fn=model.apply,
         params=variables['params'],
-        tx=create_optimizer(epochs_num, total_steps, optimizer_lr),
+        tx=create_optimizer(),
         batch_stats=variables.get('batch_stats', {}),
         key=rng
     )
 
 # -------------------------------------------------------------------
-# Training Loop Functions
-# -------------------------------------------------------------------
-
-def train_epoch(state, train_loader, writer, epoch_idx, print_every, label_last, sub_seq_length, sequence_length):
-    print_train_loss = 0
-    print_correct = 0
-    print_total = 0
-    end_training_flag = False
-
-    epoch_start_time = time.time()
-
-    for i, batch in enumerate(train_loader):
-        batch = to_jax(batch)
-        state, loss, acc, batch_outputs_mean = train_step(state, batch, label_last, sub_seq_length, sequence_length)
-
-        loss_val_item = loss.item() # Get Python float for logging
-
-        writer.add_scalar("Loss/train", loss_val_item, epoch_idx * len(train_loader) + i)
-        writer.add_scalar("Accuracy/train", acc.item(), epoch_idx * len(train_loader) + i)
-
-        print_train_loss += loss_val_item
-        print_total += batch[1].shape[0] # batch_size
-        print_correct += count_correct_predictions_jax(batch_outputs_mean, batch[1]) # batch[1] is targets
-
-        if math.isnan(loss_val_item):
-            end_training_flag = True
-            break
-
-        if i % print_every == (print_every - 1):
-            print_acc = (print_correct / print_total) * 100.0
-
-            print(
-                "Epoch [{:4d}/{:4d}]  |  Step [{:4d}/{:4d}]  |  Loss/train: {:.6f}, Accuracy/train: {:8.4f}".format(
-                    epoch_idx + 1, epochs_num, i + 1, total_steps, print_train_loss / print_every, print_acc), flush=True
-            )
-            print_correct = 0
-            print_total = 0
-            print_train_loss = 0
-
-    epoch_end_time = time.time()
-    writer.add_scalar("Time/train_epoch_step", (epoch_end_time - epoch_start_time), epoch_idx)
-
-    return state, end_training_flag
-
-def evaluate(state, loader, dataset_size, writer, epoch, prefix, label_last, sub_seq_length, sequence_length):
-    total_loss = 0
-    total_correct = 0
-
-    for i, batch in enumerate(loader):
-        inputs, targets = to_jax(batch)
-        loss, acc = eval_step(state, (inputs, targets), label_last, sub_seq_length, sequence_length)
-
-        # Calculate loss value based on label_last or sequence_length
-        if label_last:
-            loss_value = loss.item()
-        else:
-            loss_value = loss.item() / (sequence_length - sub_seq_length)
-
-        total_loss += loss_value
-        # For evaluation, 'acc' from eval_step already gives batch accuracy.
-        # We need to accumulate correct predictions to get overall accuracy.
-        # (acc / 100.0) * batch_size = correct predictions in this batch
-        total_correct += int(acc / 100.0 * batch[0].shape[0]) # batch[0].shape[0] is original torch batch size
-
-    avg_loss = total_loss / len(loader)
-    avg_accuracy = (total_correct / dataset_size) * 100.0
-
-    writer.add_scalar(f"Loss/{prefix}", avg_loss, epoch)
-    writer.add_scalar(f"Accuracy/{prefix}", avg_accuracy, epoch)
-
-    return avg_loss, avg_accuracy
-
-# Helper function to save model parameters
-def save_model_params(params, file_path):
-    with open(file_path, 'wb') as f:
-        f.write(flax.serialization.to_bytes(params))
-    print(f"Model parameters saved to {file_path}")
-
-# -------------------------------------------------------------------
-# Main Training Function
+# Training Loop
 # -------------------------------------------------------------------
 
 def train():
-    state = init_model()
-    best_state_params = state.params
-    min_val_loss = float("inf")
+    # Initialize model and state
+    rng = jax.random.PRNGKey(42)
+    state = init_model(rng)
+    best_params = state.params
+    min_val_loss = float('inf')
     min_val_epoch = 0
+    end_training = False
 
     # TensorBoard setup
     rand_num = random.randint(1, 10000)
-    opt_str = "{}_Adam({:.2f}),NLL,LinearLR,ll({}),no_gc".format(rand_num, optimizer_lr, label_last)
-    net_str = "RSNN(700,128,20,sub_seq({}),bs_{},ep_{}_bias)".format(sub_seq_length, batch_size, epochs_num)
-    unit_str = "ALIF(tau_m({},{}),tau_a({},{}),linMask_{})LI(tau_m({},{}))".format(
-        adaptive_tau_mem_mean, adaptive_tau_mem_std, adaptive_tau_adp_mean, adaptive_tau_adp_std, mask_prob,
-        out_adaptive_tau_mem_mean, out_adaptive_tau_mem_std)
+
+    # [logging] Only thing manually changed in the string: Optimizer, criterion and scheduler!
+    opt_str = "{}_Adam({}),NLL,LinearLR,ll({}),no_gc".format(rand_num, optimizer_lr, label_last)
+    net_str = "RSNN(700,128,20,sub_seq({}),bs_{},ep_{}_bias)" \
+        .format(sub_seq_length, batch_size, epochs_num)
+    unit_str = "ALIF(tau_m({},{}),tau_a({},{}),linMask_{})LI(tau_m({},{}))" \
+        .format(adaptive_tau_mem_mean, adaptive_tau_mem_std, adaptive_tau_adp_mean, adaptive_tau_adp_std, mask_prob,
+                out_adaptive_tau_mem_mean, out_adaptive_tau_mem_std)
+
     comment = opt_str + "," + net_str + "," + unit_str
 
     writer = SummaryWriter(comment=comment)
     log_dir = writer.log_dir
-    print(f"TensorBoard log directory: {log_dir}")
-    subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", "6010"])
+
+    # Create models directory if not exists
+    os.makedirs("models", exist_ok=True)
+
+    # Start TensorBoard on a different port if 6009 is occupied
+    port = 6009
+    while True:
+        try:
+            subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", str(port)])
+            break
+        except OSError:
+            port += 1
 
     start_time_str = datetime.now().strftime("%m-%d_%H-%M-%S")
-    print(start_time_str, comment)
+    save_path = f"models/{start_time_str}_{comment}.msgpack"
 
-    save_model_params(state.params, f"models/{start_time_str}_{comment}_init.msgpack")
+    # Save initial parameters
+    with open(save_path.replace('.msgpack', '_init.msgpack'), 'wb') as f:
+        f.write(flax.serialization.to_bytes(state.params))
 
-    print(f"Initial model parameters:\n{jax.tree_map(lambda x: x.shape, state.params)}")
-
-    # Record the start time of the entire training run
-    training_start_time = time.time()
-
-    # Initial evaluation before training (Epoch 0)
-    val_loss, val_acc = evaluate(state, val_loader, val_dataset_size, writer, 0, "val", label_last, sub_seq_length, sequence_length)
-    test_loss, test_acc = evaluate(state, test_loader, test_dataset_size, writer, 0, "test", label_last, sub_seq_length, sequence_length)
-
-    print(f"Epoch {0:4d}/{epochs_num}  |  Summary  |  Loss/val: {val_loss:.6f}, Accuracy/val: {val_acc:.4f}%  |  Loss/test: {test_loss:.6f}, "
-          f"Accuracy/test: {test_acc:.4f}", flush=True)
-
-    writer.flush()
-
-    if val_loss <= min_val_loss:
-        min_val_loss = val_loss
-        best_state_params = state.params
-        min_val_epoch = 0
-        save_model_params(best_state_params, f"models/{start_time_str}_{comment}_best_val_loss_{min_val_loss:.6f}.msgpack")
-
-
-    end_training = False
-    print_every = 115 # From original Torch code
-
+    # Training loop
+    iteration = 0
     for epoch in range(epochs_num + 1):
-        if epoch < epochs_num: # Run training for epochs 0 to epochs_num - 1
-            state, end_training = train_epoch(state, train_loader, writer, epoch, print_every, label_last, sub_seq_length, sequence_length)
+        # Validation
+        val_loss, val_correct = 0.0, 0
+        for batch in val_loader:
+            inputs, targets = to_jax(batch)
+            loss, correct, _ = eval_step(state, inputs, targets, label_last, sub_seq_length)
+            val_loss += loss.item() * targets.shape[0]
+            val_correct += correct.item()
 
-            writer.flush()
+        val_loss /= len(val_dataset)
+        val_acc = 100.0 * val_correct / len(val_dataset)
+        writer.add_scalar("Loss/val", val_loss, epoch)
+        writer.add_scalar("Accuracy/val", val_acc, epoch)
 
-        # Always evaluate at the end of each epoch (including epoch `epochs_num` for final evaluation)
-        val_loss, val_acc = evaluate(state, val_loader, val_dataset_size, writer, epoch, "val", label_last, sub_seq_length, sequence_length)
-        test_loss, test_acc = evaluate(state, test_loader, test_dataset_size, writer, epoch, "test", label_last, sub_seq_length, sequence_length)
+        # Test
+        test_loss, test_correct, test_spikes = 0.0, 0, 0
+        for batch in test_loader:
+            inputs, targets = to_jax(batch)
+            loss, correct, spikes = eval_step(state, inputs, targets, label_last, sub_seq_length)
+            test_loss += loss.item() * targets.shape[0]
+            test_correct += correct.item()
+            test_spikes += spikes.item()
 
-        print(
-            "Epoch [{:4d}/{:4d}]  |  Summary  |  Loss/val: {val_loss:.6f}, Accuracy/val: {val_acc:.4f}%  |  Loss/test: {test_loss:.6f}, "
-            "Accuracy/test: {test_acc:.4f}".format(
-                epoch, epochs_num, val_loss, val_acc, test_loss, test_acc), flush=True
-        )
+        test_loss /= len(test_dataset)
+        test_acc = 100.0 * test_correct / len(test_dataset)
+        test_sop = test_spikes / len(test_dataset)
+        writer.add_scalar("Loss/test", test_loss, epoch)
+        writer.add_scalar("Accuracy/test", test_acc, epoch)
+        writer.add_scalar("SOP/test", test_sop, epoch)
 
-        if val_loss <= min_val_loss:
+        print(f"Epoch {epoch:4d}/{epochs_num} | Val Loss: {val_loss:.6f}, Acc: {val_acc:.2f}% | "
+              f"Test Loss: {test_loss:.6f}, Acc: {test_acc:.2f}% | SOP: {test_sop:.2f}")
+
+        # Save best model
+        if val_loss < min_val_loss:
             min_val_loss = val_loss
             min_val_epoch = epoch
-            best_state_params = state.params
-            save_model_params(best_state_params, f"models/{start_time_str}_{comment}_best_val_loss_{min_val_loss:.6f}.msgpack")
+            best_params = state.params
+            with open(save_path, 'wb') as f:
+                f.write(flax.serialization.to_bytes(best_params))
+            print(f"Saved new best model with val loss: {val_loss:.6f}")
 
-        writer.flush()
+        # Training epoch
+        if epoch < epochs_num and not end_training:
+            state = state.replace(key=jax.random.split(state.key)[0])
+            epoch_loss, epoch_correct = 0.0, 0
+            epoch_start = time.time()
+            batch_count = 0
 
-        if end_training or jnp.isnan(val_loss):
-            print("NaN loss detected or training flagged to end. Ending training.")
-            break
+            for batch in train_loader:
+                inputs, targets = to_jax(batch)
+                state, loss, correct = train_step(state, inputs, targets, label_last, sub_seq_length)
+                epoch_loss += loss.item() * targets.shape[0]
+                epoch_correct += correct.item()
+                iteration += 1
+                batch_count += 1
+
+                # Log training metrics
+                if iteration % 230 == 0:
+                    batch_acc = 100.0 * correct.item() / targets.shape[0]
+                    writer.add_scalar("Loss/train", loss.item(), iteration)
+                    writer.add_scalar("Accuracy/train", batch_acc, iteration)
+                    print(f"Iter {iteration:6d} | Loss: {loss.item():.6f}, Acc: {batch_acc:.2f}%")
+
+                # Check for NaN
+                if jnp.isnan(loss).any():
+                    print("NaN loss detected, stopping training")
+                    end_training = True
+                    break
+
+            epoch_loss /= len(train_dataset)
+            epoch_acc = 100.0 * epoch_correct / len(train_dataset)
+            epoch_time = time.time() - epoch_start
+            writer.add_scalar("Time/epoch", epoch_time, epoch)
+            print(f"Epoch {epoch+1:4d}/{epochs_num} | Train Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.2f}% | "
+                  f"Time: {epoch_time:.2f}s")
 
     writer.close()
-
-    total_training_time = time.time() - training_start_time
-    print(f"{total_training_time:.2f} seconds")
-    print("Minimum val loss: {:.6f} at epoch: {}".format(min_val_loss, min_val_epoch))
-    return best_state_params, min_val_loss, min_val_epoch
-
+    print(f"Min val loss: {min_val_loss:.6f} at epoch {min_val_epoch}")
+    return best_params
 
 # Run training
-final_best_params, final_min_val_loss, final_min_val_epoch = train()
+if __name__ == "__main__":
+    best_params = train()
