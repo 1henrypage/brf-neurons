@@ -370,6 +370,8 @@ class ALIFRSNN_BP(SimpleALIFRNN):
             return new_carry, new_out_u
 
 
+
+
 class SimpleALIFRNNTbptt(nn.Module):
     input_size: int
     hidden_size: int
@@ -665,7 +667,6 @@ class SimpleALIFRNNTbptt(nn.Module):
             carry_final[8],  # new_params (final updated parameters)
             carry_final[9],  # new_opt_state (final updated optimizer state)
         )
-
 
 
 
