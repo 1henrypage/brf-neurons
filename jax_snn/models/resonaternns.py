@@ -50,7 +50,6 @@ class SimpleResRNN(nn.Module):
             bias=self.output_bias
         )
 
-        # The nn.scan is defined directly in setup
         self.scanned_core = nn.scan(
             self.ResScanCore,
             variable_broadcast="params",
@@ -59,7 +58,6 @@ class SimpleResRNN(nn.Module):
             out_axes=0
         )(self.hidden_cell, self.out_cell)
 
-    @nn.compact
     def __call__(self, x: jnp.ndarray, train: bool = True) -> Tuple[jnp.ndarray, Tuple[Tuple[jnp.ndarray, jnp.ndarray], jnp.ndarray], jnp.ndarray]:
         batch_size = x.shape[1]
 
@@ -67,13 +65,7 @@ class SimpleResRNN(nn.Module):
         init_out = jnp.zeros((batch_size, self.output_size))
         init_state = (init_h, init_h, init_h, init_h, init_out, jnp.array(0.0))
 
-        # Pass 'train' as a static argument to the scanned_core's __call__
-        # The 'train' argument here is *not* for the internal cells but for the `nn.scan` itself
-        # if the scanned function needed to differentiate train/eval specific behaviors.
-        # However, since the cells themselves no longer take 'train', this 'train' parameter
-        # to scanned_core might become unused unless there's logic *within* ResScanCore
-        # that depends on it (e.g., if it had dropout layers directly).
-        (final_hidden_z, final_hidden_u, _, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x) # Removed train=train from here
+        (final_hidden_z, final_hidden_u, _, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x)
 
         outs = outs[self.sub_seq_length:]
         if self.label_last:
@@ -86,16 +78,14 @@ class SimpleResRNN(nn.Module):
         out_cell: nn.Module
 
         @nn.compact
-        def __call__(self, carry, x_t): # Removed train: bool from here
+        def __call__(self, carry, x_t):
             hidden_z, hidden_u, hidden_v, hidden_q, out_u, spike_sum = carry
             x_in = jnp.concatenate([x_t, hidden_z], axis=1)
-            # Call hidden_cell and out_cell without the 'train' argument
             new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_q = self.hidden_cell(x_in, (hidden_z, hidden_u, hidden_v, hidden_q))
             new_spike_sum = spike_sum + jnp.sum(new_hidden_z)
             new_out_u = self.out_cell(new_hidden_z, out_u)
             return (new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_q, new_out_u, new_spike_sum), new_out_u
 
-# SimpleVanillaRFRNN
 
 class SimpleVanillaRFRNN(nn.Module):
     input_size: int
@@ -149,7 +139,6 @@ class SimpleVanillaRFRNN(nn.Module):
             out_axes=0
         )(self.hidden_cell, self.out_cell)
 
-    @nn.compact
     def __call__(self, x: jnp.ndarray, train: bool = True) -> Tuple[jnp.ndarray, Tuple[Tuple[jnp.ndarray, jnp.ndarray], jnp.ndarray], jnp.ndarray]:
         batch_size = x.shape[1]
 
@@ -157,7 +146,7 @@ class SimpleVanillaRFRNN(nn.Module):
         init_out = jnp.zeros((batch_size, self.output_size))
         init_state = (init_h, init_h, init_h, init_out, jnp.array(0.0))
 
-        # Removed train=train from here
+
         (final_hidden_z, final_hidden_u, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x)
 
         outs = outs[self.sub_seq_length:]
@@ -171,34 +160,32 @@ class SimpleVanillaRFRNN(nn.Module):
         out_cell: nn.Module
 
         @nn.compact
-        def __call__(self, carry, x_t): # Removed train: bool from here
+        def __call__(self, carry, x_t):
             hidden_z, hidden_u, hidden_v, out_u, spike_sum = carry
             x_in = jnp.concatenate([x_t, hidden_z], axis=1)
-            # Call hidden_cell and out_cell without the 'train' argument
+
+
             new_hidden_z, new_hidden_u, new_hidden_v = self.hidden_cell(x_in, (hidden_z, hidden_u, hidden_v))
+
             new_spike_sum = spike_sum + jnp.sum(new_hidden_z)
             new_out_u = self.out_cell(new_hidden_z, out_u)
+
             return (new_hidden_z, new_hidden_u, new_hidden_v, new_out_u, new_spike_sum), new_out_u
-
-
-# BRFRSNN_SD
 
 class BRFRSNN_SD(SimpleResRNN):
     spike_del_p: float = 0.0
 
     def setup(self):
-        super().setup() # Calls SimpleResRNN's setup to initialize hidden_cell and out_cell
+        super().setup()
 
-        # Re-define scanned_core to use the BRFRSNN_SD_ScanCore
         self.scanned_core = nn.scan(
             self.BRFRSNN_SD_ScanCore,
             variable_broadcast="params",
-            split_rngs={"params": False, "spike_deletion": True}, # Split rng for spike_deletion
+            split_rngs={"params": False, "spike_deletion": True},
             in_axes=0,
             out_axes=0
-        )(self.hidden_cell, self.out_cell) # Pass the already initialized cells
+        )(self.hidden_cell, self.out_cell)
 
-    @nn.compact
     def __call__(self, x: jnp.ndarray, train: bool = True) -> Tuple[jnp.ndarray, Tuple[Tuple[jnp.ndarray, jnp.ndarray], jnp.ndarray], jnp.ndarray]:
         batch_size = x.shape[1]
 
@@ -206,13 +193,13 @@ class BRFRSNN_SD(SimpleResRNN):
         init_out = jnp.zeros((batch_size, self.output_size))
         init_state = (init_h, init_h, init_h, init_h, init_out, jnp.array(0.0))
 
-        # Removed train=train from here
+
         (final_hidden_z, final_hidden_u, _, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x)
 
         outs = outs[self.sub_seq_length:]
         if self.label_last:
-            outs = outs[-1:, :, :] # Original was [-1:, :, :], changed to n_last for consistency with SimpleResRNN's n_last.
-                                   # Reverting to original logic: [-1:, :, :] as per your instruction.
+            outs = outs[-1:, :, :]
+
 
         return outs, ((final_hidden_z, final_hidden_u), final_out_u), spike_sum
 
@@ -221,34 +208,31 @@ class BRFRSNN_SD(SimpleResRNN):
         out_cell: nn.Module
 
         @nn.compact
-        def __call__(self, carry, x_t): # Removed train: bool from here
+        def __call__(self, carry, x_t):
             hidden_z, hidden_u, hidden_v, hidden_q, out_u, spike_sum = carry
             x_in = jnp.concatenate([x_t, hidden_z], axis=1)
-            # Call hidden_cell without the 'train' argument
+
             new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_q = self.hidden_cell(x_in, (hidden_z, hidden_u, hidden_v, hidden_q))
 
-            # spike deletion
-            # Access spike_del_p from parent module's attributes
             new_hidden_z = spike_deletion(hidden_z=new_hidden_z,
                                           spike_del_p=self.parent.spike_del_p,
                                           key=self.make_rng('spike_deletion')
                                           )
 
             new_spike_sum = spike_sum + jnp.sum(new_hidden_z)
-            # Call out_cell without the 'train' argument
             new_out_u = self.out_cell(new_hidden_z, out_u)
             return (new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_q, new_out_u, new_spike_sum), new_out_u
 
 
-# BRFRSNN_BP
+
 
 class BRFRSNN_BP(SimpleResRNN):
     bit_precision: int = 52
 
     def setup(self):
-        # Call SimpleResRNN's setup first to initialize hidden_cell
+
         super().setup()
-        # Then override self.out_cell with LICellBP
+
         self.out_cell = modules.LICellBP(
             input_size=self.hidden_size,
             layer_size=self.output_size,
@@ -257,16 +241,15 @@ class BRFRSNN_BP(SimpleResRNN):
             adaptive_tau_mem_std=self.out_adaptive_tau_mem_std
         )
 
-        # Re-define scanned_core to use the BRFRSNN_BP_ScanCore
+
         self.scanned_core = nn.scan(
             self.BRFRSNN_BP_ScanCore,
             variable_broadcast="params",
             split_rngs={"params": False},
             in_axes=0,
             out_axes=0
-        )(self.hidden_cell, self.out_cell) # Pass the initialized cells
+        )(self.hidden_cell, self.out_cell)
 
-    @nn.compact
     def __call__(self, x: jnp.ndarray, train: bool = True) -> Tuple[jnp.ndarray, Tuple[Tuple[jnp.ndarray, jnp.ndarray], jnp.ndarray], jnp.ndarray]:
         batch_size = x.shape[1]
 
@@ -281,7 +264,7 @@ class BRFRSNN_BP(SimpleResRNN):
 
         init_state = (hidden_z, hidden_u, hidden_v, hidden_q, out_u, jnp.array(0.0))
 
-        # Removed train=train from here
+
         (final_hidden_z, final_hidden_u, _, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x)
 
         outs = outs[self.sub_seq_length:]
@@ -295,36 +278,29 @@ class BRFRSNN_BP(SimpleResRNN):
         out_cell: nn.Module
 
         @nn.compact
-        def __call__(self, carry, x_t): # Removed train: bool from here
+        def __call__(self, carry, x_t):
             hidden_z, hidden_u, hidden_v, hidden_q, out_u, spike_sum = carry
             x_in = jnp.concatenate([x_t, hidden_z], axis=1)
-            # Call hidden_cell without the 'train' argument
             new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_q = self.hidden_cell(x_in, (hidden_z, hidden_u, hidden_v, hidden_q))
 
             new_spike_sum = spike_sum + jnp.sum(new_hidden_z)
-            # Call out_cell without the 'train' argument
             new_out_u = self.out_cell(new_hidden_z, out_u)
             return (new_hidden_z, new_hidden_u, new_hidden_v, new_hidden_q, new_out_u, new_spike_sum), new_out_u
-
-
-# RFRSNN_SD
 
 class RFRSNN_SD(SimpleVanillaRFRNN):
     spike_del_p: float = 0.0
 
     def setup(self):
-        super().setup() # Calls SimpleVanillaRFRNN's setup to initialize hidden_cell and out_cell
+        super().setup()
 
-        # Re-define scanned_core to use the RFRSNN_SD_ScanCore
         self.scanned_core = nn.scan(
             self.RFRSNN_SD_ScanCore,
             variable_broadcast="params",
-            split_rngs={"params": False, "spike_deletion": True}, # Split rng for spike_deletion
+            split_rngs={"params": False, "spike_deletion": True},
             in_axes=0,
             out_axes=0
-        )(self.hidden_cell, self.out_cell) # Pass the already initialized cells
+        )(self.hidden_cell, self.out_cell)
 
-    @nn.compact
     def __call__(self, x: jnp.ndarray, train: bool = True) -> Tuple[jnp.ndarray, Tuple[Tuple[jnp.ndarray, jnp.ndarray], jnp.ndarray], jnp.ndarray]:
         batch_size = x.shape[1]
 
@@ -332,7 +308,6 @@ class RFRSNN_SD(SimpleVanillaRFRNN):
         init_out = jnp.zeros((batch_size, self.output_size))
         init_state = (init_h, init_h, init_h, init_out, jnp.array(0.0))
 
-        # Removed train=train from here
         (final_hidden_z, final_hidden_u, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x)
 
         outs = outs[self.sub_seq_length:]
@@ -346,10 +321,9 @@ class RFRSNN_SD(SimpleVanillaRFRNN):
         out_cell: nn.Module
 
         @nn.compact
-        def __call__(self, carry, x_t): # Removed train: bool from here
+        def __call__(self, carry, x_t):
             hidden_z, hidden_u, hidden_v, out_u, spike_sum = carry
             x_in = jnp.concatenate([x_t, hidden_z], axis=1)
-            # Call hidden_cell without the 'train' argument
             new_hidden_z, new_hidden_u, new_hidden_v = self.hidden_cell(x_in, (hidden_z, hidden_u, hidden_v))
 
             new_hidden_z = spike_deletion(hidden_z=new_hidden_z,
@@ -358,19 +332,16 @@ class RFRSNN_SD(SimpleVanillaRFRNN):
                                           )
 
             new_spike_sum = spike_sum + jnp.sum(new_hidden_z)
-            # Call out_cell without the 'train' argument
             new_out_u = self.out_cell(new_hidden_z, out_u)
             return (new_hidden_z, new_hidden_u, new_hidden_v, new_out_u, new_spike_sum), new_out_u
 
 
-# RFRSNN_BP
 
 class RFRSNN_BP(SimpleVanillaRFRNN):
     bit_precision: int = 32
 
     def setup(self):
-        super().setup() # Calls SimpleVanillaRFRNN's setup to initialize hidden_cell
-        # Then override self.out_cell with LICellBP
+        super().setup()
         self.out_cell = modules.LICellBP(
             input_size=self.hidden_size,
             layer_size=self.output_size,
@@ -379,16 +350,14 @@ class RFRSNN_BP(SimpleVanillaRFRNN):
             adaptive_tau_mem_std=self.out_adaptive_tau_mem_std
         )
 
-        # Re-define scanned_core to use the RFRSNN_BP_ScanCore
         self.scanned_core = nn.scan(
             self.RFRSNN_BP_ScanCore,
             variable_broadcast="params",
             split_rngs={"params": False},
             in_axes=0,
             out_axes=0
-        )(self.hidden_cell, self.out_cell) # Pass the initialized cells
+        )(self.hidden_cell, self.out_cell)
 
-    @nn.compact
     def __call__(self, x: jnp.ndarray, train: bool = True) -> Tuple[jnp.ndarray, Tuple[Tuple[jnp.ndarray, jnp.ndarray], jnp.ndarray], jnp.ndarray]:
         batch_size = x.shape[1]
 
@@ -400,7 +369,6 @@ class RFRSNN_BP(SimpleVanillaRFRNN):
 
         init_state = (hidden_z, hidden_u, hidden_v, out_u, jnp.array(0.0))
 
-        # Removed train=train from here
         (final_hidden_z, final_hidden_u, _, final_out_u, spike_sum), outs = self.scanned_core(init_state, x)
 
         outs = outs[self.sub_seq_length:]
@@ -414,12 +382,10 @@ class RFRSNN_BP(SimpleVanillaRFRNN):
         out_cell: nn.Module
 
         @nn.compact
-        def __call__(self, carry, x_t): # Removed train: bool from here
+        def __call__(self, carry, x_t):
             hidden_z, hidden_u, hidden_v, out_u, spike_sum = carry
             x_in = jnp.concatenate([x_t, hidden_z], axis=1)
-            # Call hidden_cell without the 'train' argument
             new_hidden_z, new_hidden_u, new_hidden_v = self.hidden_cell(x_in, (hidden_z, hidden_u, hidden_v))
             new_spike_sum = spike_sum + jnp.sum(new_hidden_z)
-            # Call out_cell without the 'train' argument
             new_out_u = self.out_cell(new_hidden_z, out_u)
             return (new_hidden_z, new_hidden_u, new_hidden_v, new_out_u, new_spike_sum), new_out_u

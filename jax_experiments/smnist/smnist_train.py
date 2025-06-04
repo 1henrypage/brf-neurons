@@ -31,7 +31,7 @@ print("Using device:", device)
 # Dataset Preparation (PSMNIST specific)
 # -------------------------------------------------------------------
 
-PERMUTED = True
+PERMUTED = False
 label_last = False
 sequence_length = 28 * 28
 input_size = 1
@@ -162,7 +162,7 @@ def count_correct(outputs: jnp.ndarray, targets: jnp.ndarray) -> jnp.ndarray:
 # Model Configuration
 # -------------------------------------------------------------------
 
-from jax_snn.models import SimpleResRNN
+from jax_snn.models import SimpleResRNN, SimpleVanillaRFRNN
 
 hidden_size = 256
 mask_prob = 0.0
@@ -174,7 +174,7 @@ out_adaptive_tau_mem_mean = 20.
 out_adaptive_tau_mem_std = 1.
 output_bias = False
 
-model = SimpleResRNN(
+model = SimpleVanillaRFRNN(
     input_size=input_size,
     hidden_size=hidden_size,
     output_size=num_classes,

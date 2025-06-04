@@ -59,7 +59,6 @@ class LICell(nn.Module):
     def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
         in_sum = self.linear(x)
 
-        # Access the parameter created in setup
         tau_mem = jnp.abs(self.tau_mem_param)
 
         alpha = jnp.exp(-1.0 / tau_mem)
@@ -99,7 +98,6 @@ class LIFCell(nn.Module):
 
         in_sum = self.linear(x)
 
-        # Access the parameter created in setup
         tau_mem = jnp.abs(self.tau_mem_param)
 
         alpha = jnp.sigmoid(-1.0 / jnp.abs(tau_mem))
@@ -110,16 +108,11 @@ class LIFCell(nn.Module):
 
 class LICellSigmoid(LICell):
     def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
-        # Reusing `self.linear` from parent `LICell`'s setup
         in_sum = self.linear(x)
 
-        # Reusing `self.tau_mem_param` from parent `LICell`'s setup
-        # The original code re-defined it. To properly convert, it needs to use the parent's.
-        # If this param is *different* from the parent's, LICellSigmoid needs its own setup.
-        # Assuming for now it uses the one defined by the parent, but its *calculation* of alpha differs.
-        tau_mem = self.tau_mem_param # Get the parameter from setup
+        tau_mem = self.tau_mem_param
 
-        alpha = jax.nn.sigmoid(tau_mem) # This is the unique part of LICellSigmoid
+        alpha = jax.nn.sigmoid(tau_mem)
 
         return li_update(x=in_sum, u=u, alpha=alpha)
 
@@ -127,14 +120,10 @@ class LICellSigmoid(LICell):
 class LICellBP(LICell):
     bit_precision: int = 32
 
-    # This class also inherits its `setup` method from LICell.
-    # Thus, `self.linear` and `self.tau_mem_param` are already defined.
 
     def __call__(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
-        # Reusing `self.linear` from parent `LICell`'s setup
         in_sum = self.linear(x)
 
-        # Access the parameter created in parent `LICell`'s setup
         tau_mem = jnp.abs(self.tau_mem_param)
 
         alpha = jnp.exp(-1.0 / jnp.abs(tau_mem))

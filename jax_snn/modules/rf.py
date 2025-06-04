@@ -130,12 +130,13 @@ class RFCell(nn.Module):
             x: jnp.ndarray,
             state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-
-        in_sum = self.linear(x)
         z, u, v = state
 
+        in_sum = self.linear(x)
+
         omega = jnp.abs(self.omega_param)
-        b = -jnp.abs(self.b_offset_param) # `b_offset` param stored as positive, negate it here
+        b = -jnp.abs(self.b_offset_param)
+
 
         z, u, v = rf_update(
             x=in_sum,
@@ -145,13 +146,19 @@ class RFCell(nn.Module):
             omega=omega,
             dt=self.dt,
         )
+
+        # clamp idk wtf was going wrong here, but u and v were exploding on SMNIST
+        u = jnp.clip(u, -1e6, 1e6)
+        v = jnp.clip(v, -1e6, 1e6)
+
+        # Debug: post-update
+
         return z, u, v
 
 
+
+
 class BRFCell(RFCell):
-    # No @nn.compact decorator for __call__ needed here.
-    # BRFCell inherits `setup` from RFCell, so `self.linear`, `self.omega_param`,
-    # and `self.b_offset_param` are already defined and initialized by RFCell's setup.
 
     def __call__(
             self,
@@ -159,16 +166,14 @@ class BRFCell(RFCell):
             state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray],
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
 
-        # Reuse `self.linear` from the inherited `setup` method.
         in_sum = self.linear(x)
         z, u, v, q = state
 
-        # Access parameters defined in RFCell's setup
         omega = jnp.abs(self.omega_param)
         b_offset = jnp.abs(self.b_offset_param)
 
         p_omega = sustain_osc(omega)
-        b = p_omega - b_offset - q # The original b in BRFCell is derived differently than RFCell's b
+        b = p_omega - b_offset - q
 
         z, u, v, q = brf_update(
             x=in_sum,

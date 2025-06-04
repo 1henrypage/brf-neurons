@@ -13,14 +13,12 @@ class LinearMask(nn.Module):
     mask_prob: float = 0.0
 
     def setup(self):
-        # Initialize learnable weight
         self.weight = self.param(
             'weight',
             xavier_uniform(),
             (self.out_features, self.in_features)
         )
 
-        # Initialize optional bias
         if self.bias:
             self.bias_param = self.param(
                 'bias',
@@ -30,7 +28,6 @@ class LinearMask(nn.Module):
         else:
             self.bias_param = None
 
-        # Create the fixed mask
         key = self.make_rng('params')
         mask = jnp.ones((self.out_features, self.in_features))
 
@@ -39,7 +36,6 @@ class LinearMask(nn.Module):
             masked_region = rand_vals > self.mask_prob
             mask = mask.at[:, self.lbd:self.ubd].multiply(masked_region.astype(mask.dtype))
 
-        # Register as non-trainable "buffer"
         self.mask = self.variable('constants', 'mask', lambda: mask)
 
     def __call__(self, x):

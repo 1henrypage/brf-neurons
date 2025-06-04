@@ -39,7 +39,6 @@ def linear_peak(x: jnp.ndarray) -> jnp.ndarray:
 def linear_peak_antiderivative(x: jnp.ndarray) -> jnp.ndarray:
     xa = jax.nn.relu(1.0 - jnp.abs(x))
     xa_sq = xa ** 2
-    # Use lax.cond to avoid Python branching inside jitted function
     return 0.5 * lax.select(x < 0, xa_sq, 2.0 - xa_sq)
 
 
@@ -64,7 +63,6 @@ def quantize_tensor(tensor: jnp.ndarray, f: int) -> jnp.ndarray:
 
 @partial(jax.jit, static_argnums=(2,))
 def spike_deletion(hidden_z: jnp.ndarray, spike_del_p: float, key: jax.random.PRNGKey) -> jnp.ndarray:
-    # Generate uniform random values in [0,1) with the same shape as hidden_z
     rand_vals = jax.random.uniform(key, shape=hidden_z.shape)
     mask = spike_del_p < rand_vals
     return hidden_z * mask.astype(hidden_z.dtype)

@@ -39,7 +39,6 @@ class SimpleHarmonicRNN(nn.Module):
             bias=self.output_bias
         )
 
-        # Scan-compatible wrapper
         self.scanned_core = nn.scan(
             self.HarmonicScanCore,
             variable_broadcast="params",
@@ -48,7 +47,6 @@ class SimpleHarmonicRNN(nn.Module):
             out_axes=0
         )(self.hidden, self.out)
 
-    @nn.compact
     def __call__(self, x):
         batch_size = x.shape[1]
 
@@ -76,11 +74,6 @@ class SimpleHarmonicRNN(nn.Module):
         else:
             outputs = outputs_u
 
-        # The original return structure for the hidden state was ((final_hidden_z, final_hidden_u), final_out_u)
-        # Based on scan_fn's carry and HRFCell's outputs, it seems (z, u, v, a) are all part of the hidden state.
-        # I'll stick to the original return format of the hidden state if possible, or infer from current structure.
-        # Given the previous context, I'll return (final_hidden_z, final_hidden_u, final_hidden_v, final_hidden_a)
-        # as the first part of the hidden state tuple for consistency with how it's handled in the carry.
         return outputs, ((final_hidden_z, final_hidden_u, final_hidden_v, final_hidden_a), final_out_u), total_spikes
 
     class HarmonicScanCore(nn.Module):

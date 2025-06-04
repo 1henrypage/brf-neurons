@@ -12,11 +12,9 @@ from flax.linen.initializers import zeros, normal, xavier_uniform
 # Neuron update functional
 ################################################################
 
-# default values for time constants
 DEFAULT_ALIF_TAU_M = 20.
 DEFAULT_ALIF_TAU_ADP = 20.
 
-# base threshold
 DEFAULT_ALIF_THETA = 0.01
 
 DEFAULT_ALIF_BETA = 1.8
