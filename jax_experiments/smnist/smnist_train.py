@@ -174,7 +174,7 @@ out_adaptive_tau_mem_mean = 20.
 out_adaptive_tau_mem_std = 1.
 output_bias = False
 
-model = SimpleVanillaRFRNN(
+model = SimpleResRNN(
     input_size=input_size,
     hidden_size=hidden_size,
     output_size=num_classes,

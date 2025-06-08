@@ -16,6 +16,8 @@ dependencies = [
     "jax[cuda12]==0.5.3",
     "flax==0.10.6",
     "optax==0.2.4",
+    "pandas==2.2.3",
+    "notebook (>=7.4.3,<8.0.0)",
 ]
 
 [tool.poetry]

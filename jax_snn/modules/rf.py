@@ -155,9 +155,6 @@ class RFCell(nn.Module):
 
         return z, u, v
 
-
-
-
 class BRFCell(RFCell):
 
     def __call__(
