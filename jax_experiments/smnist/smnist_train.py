@@ -31,7 +31,7 @@ print("Using device:", device)
 # Dataset Preparation (PSMNIST specific)
 # -------------------------------------------------------------------
 
-PERMUTED = False
+PERMUTED = True
 label_last = False
 sequence_length = 28 * 28
 input_size = 1
@@ -174,7 +174,7 @@ out_adaptive_tau_mem_mean = 20.
 out_adaptive_tau_mem_std = 1.
 output_bias = False
 
-model = SimpleResRNN(
+model = SimpleVanillaRFRNN(
     input_size=input_size,
     hidden_size=hidden_size,
     output_size=num_classes,
