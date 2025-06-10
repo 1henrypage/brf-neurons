@@ -99,7 +99,7 @@ out_adaptive_tau_mem_std = 1.
 sub_seq_length = 0
 dt = 0.01
 
-model = SimpleVanillaRFRNN(
+model = SimpleResRNN(
     input_size=input_size,
     hidden_size=hidden_size,
     output_size=num_classes,

@@ -36,7 +36,7 @@ print(device)
 
 rand_num = random.randint(1, 10000)
 
-PERMUTED = True
+PERMUTED = False
 label_last = False
 
 sequence_length = 28 * 28
