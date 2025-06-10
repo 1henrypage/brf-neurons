@@ -67,11 +67,6 @@ def count_correct_predictions(predictions: torch.Tensor, labels: torch.Tensor) -
     return predictions.argmax(dim=1).eq(labels).sum().item()
 
 
-def custom_print(message_to_print, log_file: str):
-    print(message_to_print)
-    with open(log_file, 'a') as of:
-        of.write(message_to_print + '\n')
-
 
 class PerformanceCounter:
 

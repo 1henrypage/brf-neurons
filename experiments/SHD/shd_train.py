@@ -8,6 +8,7 @@ import math
 import random
 
 import sys
+import time
 sys.path.append("../..")
 import snn
 
@@ -348,6 +349,7 @@ for epoch in range(epochs_num + 1):
         print_correct = 0
         print_total = 0
 
+        epoch_start_time = time.time()
         # Perform training epoch (iterate over all mini batches in training set).
         for i, (inputs, targets) in enumerate(train_loader):
 
@@ -415,6 +417,9 @@ for epoch in range(epochs_num + 1):
                 print_train_loss = 0
 
             iteration += 1
+
+        epoch_end_time = time.time()
+        writer.add_scalar("Time/train_epoch_step", (epoch_end_time - epoch_start_time), epoch)
 
         scheduler.step()
 

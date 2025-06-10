@@ -2,6 +2,7 @@ import subprocess
 
 import torch
 import torch.nn
+import time
 from torch.utils.data import DataLoader, random_split
 import scipy
 import math
@@ -275,6 +276,8 @@ for epoch in range(epochs_num + 1):
         test_loss /= total_test_steps
         test_acc = (test_correct / (test_dataset_size * (sequence_length - sub_seq_length))) * 100.0
 
+
+
         # Log current test loss and accuracy
         writer.add_scalar(
             "Loss/test",
@@ -308,6 +311,8 @@ for epoch in range(epochs_num + 1):
         # go to training mode
         model.train()
 
+
+        epoch_start_time = time.time()
         for i, (inputs, targets) in enumerate(train_loader):
 
             current_batch_size = len(inputs)
@@ -359,6 +364,11 @@ for epoch in range(epochs_num + 1):
                 break
 
             iteration += 1
+
+        epoch_end_time = time.time()
+
+        writer.add_scalar("Time/train_epoch_step", (epoch_end_time - epoch_start_time), epoch)
+
 
         print_train_loss /= total_train_steps
         print_acc = (print_train_correct / (train_dataset_size * (sequence_length - sub_seq_length))) * 100.0

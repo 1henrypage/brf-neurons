@@ -11,8 +11,11 @@ In this repository we reproduce part of the paper [Balanced Resonate-and-Fire Ne
 - Ablation study to test effect of the 3  BRF mechanisms.
 
 **Henry Page ()**
+- Reproduce SMNIST parts of Figure 5.
+- Jax port of code and experiments to determine speedups.
 
 **Bernadett Bakos ()**
+- Reproduce PSMNIST parts of Figure 5.
 
 ## Links
 
